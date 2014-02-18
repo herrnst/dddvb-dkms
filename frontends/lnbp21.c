@@ -44,6 +44,11 @@ struct lnbp21 {
 	u8			i2c_addr;
 };
 
+static int lnbp21_dummy_for_srcversion(void)
+{
+       return 0;
+}
+
 static int lnbp21_set_voltage(struct dvb_frontend *fe,
 					fe_sec_voltage_t voltage)
 {
