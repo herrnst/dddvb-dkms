@@ -398,7 +398,7 @@ static __init int module_init_ddbridge(void)
 {
 	int stat = -1;
 
-	printk(KERN_INFO "Digital Devices PCIE bridge driver 0.9.9, "
+	printk(KERN_INFO "Digital Devices PCIE bridge driver 0.9.10, "
 	       "Copyright (C) 2010-13 Digital Devices GmbH\n");
 	if (ddb_class_create() < 0)
 		return -1;
@@ -429,4 +429,4 @@ module_exit(module_exit_ddbridge);
 MODULE_DESCRIPTION("Digital Devices PCIe Bridge");
 MODULE_AUTHOR("Ralph Metzler, Metzler Brothers Systementwicklung");
 MODULE_LICENSE("GPL");
-MODULE_VERSION("0.9.9");
+MODULE_VERSION("0.9.10");
