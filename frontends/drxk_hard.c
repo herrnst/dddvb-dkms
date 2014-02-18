@@ -1958,6 +1958,7 @@ static int GetLockStatus(struct drxk_state *state, u32 *pLockStatus,
 		status = GetDVBTLockStatus(state, pLockStatus);
 		break;
 	default:
+		status = 0;
 		break;
 	}
 error:
