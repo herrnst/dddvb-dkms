@@ -406,7 +406,7 @@ static __init int module_init_ddbridge(void)
 {
 	int stat = -1;
 
-	pr_info("Digital Devices PCIE bridge driver 0.9.10, Copyright (C) 2010-13 Digital Devices GmbH\n");
+	pr_info("Digital Devices PCIE bridge driver 0.9.12, Copyright (C) 2010-13 Digital Devices GmbH\n");
 	if (ddb_class_create() < 0)
 		return -1;
 	ddb_wq = create_workqueue("ddbridge");
