@@ -36,7 +36,7 @@
 
 #include "cxd2099.h"
 
-/*#define BUFFER_MODE 1*/
+#define BUFFER_MODE 1
 
 #define MAX_BUFFER_SIZE 248
 

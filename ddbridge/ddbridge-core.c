@@ -651,8 +651,9 @@ static u32 ddb_input_avail(struct ddb_input *input)
 		ddbwritel(dev, stat, DMA_BUFFER_ACK(input->dma->nr));
 		return 0;
 	}
-	if (input->dma->cbuf != idx || off < input->dma->coff)
-		return 188;
+
+	if (input->dma->cbuf != idx)
+		return input->dma->size - input->dma->coff;
 	return 0;
 }
 
@@ -724,7 +725,7 @@ static ssize_t ts_write(struct file *file, const char *buf,
 		buf += stat;
 		left -= stat;
 	}
-	return (left == count) ? -EAGAIN : (count - left);
+	return count && (left == count) ? -EAGAIN : (count - left);
 }
 
 static ssize_t ts_read(struct file *file, char *buf,
@@ -734,12 +735,11 @@ static ssize_t ts_read(struct file *file, char *buf,
 	struct ddb_output *output = dvbdev->priv;
 	struct ddb_input *input = output->port->input[0];
 	struct ddb *dev = output->port->dev;
-	int left, read;
+	size_t left = count;
+	int stat;
 
 	if (!dev->has_dma)
 		return -EINVAL;
-	count -= count % 188;
-	left = count;
 	while (left) {
 		if (ddb_input_avail(input) < 188) {
 			if (file->f_flags & O_NONBLOCK)
@@ -749,11 +749,13 @@ static ssize_t ts_read(struct file *file, char *buf,
 				    ddb_input_avail(input) >= 188) < 0)
 				break;
 		}
-		read = ddb_input_read(input, buf, left);
-		left -= read;
-		buf += read;
+		stat = ddb_input_read(input, buf, left);
+		if (stat < 0)
+			return stat;
+		left -= stat;
+		buf += stat;
 	}
-	return (left == count) ? -EAGAIN : (count - left);
+	return count && (left == count) ? -EAGAIN : (count - left);
 }
 
 static unsigned int ts_poll(struct file *file, poll_table *wait)
