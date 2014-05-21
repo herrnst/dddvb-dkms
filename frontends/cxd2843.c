@@ -332,7 +332,7 @@ static int read_tps(struct cxd_state *state, u8 *tps)
 		return 0;
 
 	freeze_regst(state);
-	readregst(state, 0x10, 0x2f, tps, 7);
+	readregst_unlocked(state, 0x10, 0x2f, tps, 7);
 	unfreeze_regst(state);
 	return 0;
 }
@@ -1819,7 +1819,7 @@ static int get_fe_c(struct cxd_state *state)
 	u8 qam;
 
 	freeze_regst(state);
-	readregst(state, 0x40, 0x19, &qam, 1);
+	readregst_unlocked(state, 0x40, 0x19, &qam, 1);
 	unfreeze_regst(state);
 	p->modulation = qam & 0x07;
 	return 0;

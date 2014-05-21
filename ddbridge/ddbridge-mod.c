@@ -759,6 +759,7 @@ static int mod_set_modulation(struct ddb *dev, int chan, enum fe_modulation mod)
 	dev->mod[chan].modulation = mod;
 	dev->mod[chan].obitrate = 0x0061072787900000 * (mod + 3);
 	dev->mod[chan].ibitrate = dev->mod[chan].obitrate;
+	ddbwritel(dev, qamtab[mod], CHANNEL_SETTINGS(chan));
 	return 0;
 }
 
