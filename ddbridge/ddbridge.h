@@ -1,7 +1,7 @@
 /*
  * ddbridge.h: Digital Devices PCIe bridge driver
  *
- * Copyright (C) 2010-2013 Digital Devices GmbH
+ * Copyright (C) 2010-2014 Digital Devices GmbH
  *                         Ralph Metzler <rmetzler@digitaldevices.de>
  *
  * This program is free software; you can redistribute it and/or
@@ -30,7 +30,7 @@
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0))
 #define __devexit
 #define __devinit
-#define __devinitconst 
+#define __devinitconst
 #endif
 
 #include <linux/module.h>
@@ -77,7 +77,21 @@
 #include "dvb_ringbuffer.h"
 #include "dvb_ca_en50221.h"
 #include "dvb_net.h"
+
+#include "tda18271c2dd.h"
+#include "stv6110x.h"
+#include "stv090x.h"
+#include "lnbh24.h"
+#include "drxk.h"
+#include "stv0367.h"
+#include "stv0367dd.h"
+#include "tda18212.h"
+#include "tda18212dd.h"
+#include "cxd2843.h"
 #include "cxd2099.h"
+#include "stv0910.h"
+#include "stv6111.h"
+#include "lnbh25.h"
 
 #define DDB_MAX_I2C     4
 #define DDB_MAX_PORT   10
@@ -85,21 +99,22 @@
 #define DDB_MAX_OUTPUT 10
 
 struct ddb_regset {
-	uint32_t base;
-	uint32_t num;
-	uint32_t size;
+	u32 base;
+	u32 num;
+	u32 size;
 };
 
 struct ddb_regmap {
-	struct ddb_regset i2c;
-	struct ddb_regset i2c_buf;
-	struct ddb_regset dma;
-	struct ddb_regset dma_buf;
-	struct ddb_regset input;
-	struct ddb_regset output;
-	struct ddb_regset channel;
-	struct ddb_regset ci;
-	struct ddb_regset pid_filter;
+	struct ddb_regset *i2c;
+	struct ddb_regset *i2c_buf;
+	struct ddb_regset *dma;
+	struct ddb_regset *dma_buf;
+	struct ddb_regset *input;
+	struct ddb_regset *output;
+	struct ddb_regset *channel;
+	struct ddb_regset *ci;
+	struct ddb_regset *pid_filter;
+	struct ddb_regset *ns;
 };
 
 struct ddb_ids {
@@ -128,8 +143,9 @@ struct ddb_info {
 	u8    fan_num;
 	u8    temp_num;
 	u8    temp_bus;
-	u8    board_control;   
-	struct ddb_regmap regmap;
+	u8    board_control;
+	u8    ns_num;
+	struct ddb_regmap *regmap;
 };
 
 
@@ -229,7 +245,7 @@ struct ddb_port {
 #define DDB_PORT_TUNER          2
 #define DDB_PORT_LOOP           3
 #define DDB_PORT_MOD            4
-	char                  *name; 
+	char                  *name;
 	u32                    type;
 #define DDB_TUNER_NONE          0
 #define DDB_TUNER_DVBS_ST       1
@@ -240,17 +256,17 @@ struct ddb_port {
 #define DDB_CI_EXTERNAL_SONY    6
 #define DDB_TUNER_DVBCT2_SONY_P 7
 #define DDB_TUNER_DVBC2T2_SONY_P 8
+#define DDB_TUNER_ISDBT_SONY_P  9
 
 #define DDB_TUNER_XO2           16
-#define DDB_TUNER_DVBS          16
+#define DDB_TUNER_DVBS_STV0910  16
 #define DDB_TUNER_DVBCT2_SONY   17
 #define DDB_TUNER_ISDBT_SONY    18
 #define DDB_TUNER_DVBC2T2_SONY  19
 #define DDB_TUNER_ATSC_ST       20
 #define DDB_TUNER_DVBC2T2_ST    21
-		
-	u32                    adr;
 
+	u32                    adr;
 	struct ddb_input      *input[2];
 	struct ddb_output     *output;
 	struct dvb_ca_en50221 *en;
@@ -269,8 +285,9 @@ struct mod_base {
 
 struct mod_state {
 	u32                    modulation;
-
-	u32                    do_handle;
+	u64                    obitrate;
+	u64                    ibitrate;
+	u32                    pcr_correction;
 
 	u32                    rate_inc;
 	u32                    Control;
@@ -466,8 +483,6 @@ void ddbridge_mod_rate_handler(unsigned long data);
 
 int ddbridge_flashread(struct ddb *dev, u8 *buf, u32 addr, u32 len);
 
-#define DDBRIDGE_VERSION "0.9.13"
+#define DDBRIDGE_VERSION "0.9.14"
 
 #endif
-
-

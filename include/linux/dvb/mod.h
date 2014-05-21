@@ -11,9 +11,8 @@ struct dvb_mod_params {
 
 struct dvb_mod_channel_params {
 	enum fe_modulation modulation;
-
-	__u32 rate_increment;
-	
+	__u64 input_bitrate;         /* 2^-32 Hz */
+	int   pcr_correction; 
 };
 
 

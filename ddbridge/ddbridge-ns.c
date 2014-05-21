@@ -169,7 +169,6 @@ static int ns_set_pid(struct dvbnss *nss, u16 pid)
 static int citoport(struct ddb *dev, u8 ci)
 {
 	int i, j;
-	struct ddb_input *input;
 
 	for (i = j = 0; i < dev->info->port_num; i++) {
 		if (dev->port[i].class == DDB_PORT_CI) {

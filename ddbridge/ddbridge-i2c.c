@@ -90,7 +90,7 @@ static int i2c_write_reg(struct i2c_adapter *adap, u8 adr,
 			 u8 reg, u8 val)
 {
 	u8 msg[2] = {reg, val};
-	
+
 	return i2c_write(adap, adr, msg, 2);
 }
 

@@ -34,7 +34,7 @@ struct cxd2099_cfg {
 	u8  clock_mode;
 };
 
-struct dvb_ca_en50221 *cxd2099_attach(struct cxd2099_cfg *cfg, 
+struct dvb_ca_en50221 *cxd2099_attach(struct cxd2099_cfg *cfg,
 				      void *priv, struct i2c_adapter *i2c);
 
 

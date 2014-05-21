@@ -124,6 +124,12 @@ static void mod_set_incs(struct ddb_output *output)
 
 }
 
+static void mod_set_rateinc(struct ddb *dev, u32 chan)
+{
+	ddbwritel(dev, dev->mod[chan].rate_inc, CHANNEL_RATE_INCR(chan));
+	mod_busy(dev, chan);
+}
+
 static u32 qamtab[6] = { 0x000, 0x600, 0x601, 0x602, 0x903, 0x604 };
 
 void ddbridge_mod_output_start(struct ddb_output *output)
@@ -160,9 +166,7 @@ void ddbridge_mod_output_start(struct ddb_output *output)
 	/* ddbwritel(dev, 0x604, CHANNEL_SETTINGS(output->nr)); */
 	ddbwritel(dev, qamtab[mod->modulation], CHANNEL_SETTINGS(output->nr));
 
-	ddbwritel(dev,	mod->rate_inc, CHANNEL_RATE_INCR(output->nr));
-	mod_busy(dev, output->nr);
-
+	mod_set_rateinc(dev, output->nr);
 	mod_set_incs(output);
 
 	mod->Control = (CHANNEL_CONTROL_ENABLE_IQ |
@@ -343,7 +347,7 @@ static int mod_set_si598(struct ddb *dev, u32 freq)
 		m_fXtal = div64_u64(m_fXtal, RFreq);
 
 		pr_info("fOut = %d fXtal = %d fDCO = %d HDIV = %2d, N = %3d\n",
-			(u32) fOut, (u32) m_fXtal, (u32) fDCO, HSDiv, N);
+			(u32) fOut, (u32) m_fXtal, (u32) fDCO, (u32) HSDiv, N);
 	}
 
 	fOut = freq;
@@ -353,7 +357,7 @@ static int mod_set_si598(struct ddb *dev, u32 freq)
 
 	if (Div < MinDiv)
 		Div = Div + 1;
-	pr_info(" fOut = %d MinDiv = %4d MaxDiv = %4d StartDiv = %d\n",
+	pr_info(" fOut = %u MinDiv = %llu MaxDiv = %llu StartDiv = %llu\n",
 		fOut, MinDiv, MaxDiv, Div);
 
 	if (Div <= 11) {
@@ -371,8 +375,8 @@ static int mod_set_si598(struct ddb *dev, u32 freq)
 				if (N > 128)
 					break;
 			}
-			pr_info(" %3d: %llu %u %u %u\n",
-				retry, Div, HSDiv*N, HSDiv, N);
+			pr_info(" %3d: %llu %llu %llu %u\n",
+				retry, Div, HSDiv * N, HSDiv, N);
 			if (HSDiv * N < MinDiv)
 				Div = Div + 2;
 			else if (HSDiv * N > MaxDiv)
@@ -406,7 +410,7 @@ static int mod_set_si598(struct ddb *dev, u32 freq)
 	pr_info("%16llx %d\n", RFreq, fxtal);
 	RF = RFreq;
 
-	pr_info("fOut = %d fXtal = %d fDCO = %d HDIV = %d, N = %d, RFreq = %d\n",
+	pr_info("fOut = %u fXtal = %llu fDCO = %llu HSDIV = %llu, N = %u, RFreq = %llu\n",
 		fOut, m_fXtal, fDCO, HSDiv, N, RFreq);
 
 	Data[0] = (u8)(((HSDiv - 4) << 5) | ((N - 1) >> 2));
@@ -459,6 +463,7 @@ static int mod_set_equalizer(struct ddb *dev, u32 Num, s16 *cTable)
 	return 0;
 }
 
+#if 0
 static void mod_peak(struct ddb *dev, u32 Time, s16 *pIPeak, s16 *pQPeak)
 {
 	u32 val;
@@ -477,6 +482,7 @@ static void mod_peak(struct ddb *dev, u32 Time, s16 *pIPeak, s16 *pQPeak)
 	*pIPeak = val & 0xffff;
 	*pQPeak = (val >> 16) & 0xffff;
 }
+#endif
 
 static int mod_init_dac_input(struct ddb *dev)
 {
@@ -746,21 +752,14 @@ u32 eqtab[] = {
 	0x00001B23, 0x0000EEB7, 0x00006A28
 };
 
-static int mod_set_modulation(struct ddb *dev, int chan, int mod)
+static int mod_set_modulation(struct ddb *dev, int chan, enum fe_modulation mod)
 {
-	static u32 setting[5] = { 0x600, 0x601, 0x602, 0x903, 0x604 };
-
-	if (mod > 4)
+	if (mod > QAM_256 || mod < QAM_16)
 		return -EINVAL;
-	ddbwritel(dev, setting[mod] , CHANNEL_SETTINGS(chan));
+	dev->mod[chan].modulation = mod;
+	dev->mod[chan].obitrate = 0x0061072787900000 * (mod + 3);
+	dev->mod[chan].ibitrate = dev->mod[chan].obitrate;
 	return 0;
-}
-
-static void mod_set_rateinc(struct ddb *dev, u32 chan, u32 inc)
-{
-	dev->mod[chan].rate_inc = inc;
-	ddbwritel(dev, inc, CHANNEL_RATE_INCR(chan));
-	mod_busy(dev, chan);
 }
 
 static void mod_set_channelsumshift(struct ddb *dev, u32 shift)
@@ -870,8 +869,7 @@ static int mod_init(struct ddb *dev, u32 Frequency)
 			(FrequencyCH10 + (9 - i) * 8);
 		iqsteps = flash->DataSet[0].IQTableLength;
 		mod_set_iq(dev, iqsteps, i, iqfreq);
-
-		dev->mod[i].modulation = QAM_256;
+		mod_set_modulation(dev, i, QAM_256);
 	}
 
 	mod_bypass_equalizer(dev, 1);
@@ -890,7 +888,6 @@ fail:
 	kfree(buffer);
 	return stat;
 }
-
 
 void ddbridge_mod_rate_handler(unsigned long data)
 {
@@ -912,7 +909,7 @@ void ddbridge_mod_rate_handler(unsigned long data)
 	s64 PCRIncrement;
 	u64 mul;
 
-	if (!mod->do_handle)
+	if (!mod->pcr_correction)
 		return;
 	spin_lock(&dma->lock);
 	ddbwritel(dev, mod->Control | CHANNEL_CONTROL_FREEZE_STATUS,
@@ -957,19 +954,21 @@ void ddbridge_mod_rate_handler(unsigned long data)
 						div_u64(mul, OutPacketDiff);
 				else
 					mod->rate_inc = 0;
-				ddbwritel(dev,	mod->rate_inc,
-					  CHANNEL_RATE_INCR(output->nr));
-				mod_busy(dev, output->nr);
+				mod_set_rateinc(dev, output->nr);
 /*
 #define PACKET_CLOCKS  (27000000ULL*1504)
-#define FACTOR  (1024<<12)
+#define FACTOR  (1<<22)
 double Increment =  FACTOR*PACKET_CLOCKS/double(m_OutputBitrate);
 double Decrement =  FACTOR*PACKET_CLOCKS/double(m_InputBitrate);
+
+27000000 * 1504 * 2^22 / (6900000 * 188 / 204) = 26785190066.1
 */
-				mod->PCRIncrement = 3348148758ULL;
+				mod->PCRIncrement =
+					div_u64(26785190066ULL,
+						mod->modulation + 3);
 				if (InPacketDiff)
 					mod->PCRDecrement =
-						div_u64(3348148758ULL *
+						div_u64(mod->PCRIncrement *
 							(u64) OutPacketDiff,
 							InPacketDiff);
 				else
@@ -1057,12 +1056,13 @@ double Decrement =  FACTOR*PACKET_CLOCKS/double(m_InputBitrate);
 	mod->LastOutPackets = OutPackets;
 	mod->LastPCRAdjust = (s32) PCRAdjust;
 
+	spin_unlock(&dma->lock);
+
 	pr_info("chan %d out %016llx in %016llx indiff %08x\n",
 		chan, OutPackets, InPackets, InPacketDiff);
 	pr_info("cnt  %d pcra %016llx pcraext %08x pcraextfrac %08x pcrcorr %08x pcri %016llx\n",
 		mod->StateCounter, PCRAdjust, PCRAdjustExt,
 		PCRAdjustExtFrac, PCRCorr, mod->PCRIncrement);
-	spin_unlock(&dma->lock);
 }
 
 int ddbridge_mod_do_ioctl(struct file *file, unsigned int cmd, void *parg)
@@ -1088,13 +1088,34 @@ int ddbridge_mod_do_ioctl(struct file *file, unsigned int cmd, void *parg)
 	case DVB_MOD_CHANNEL_SET:
 	{
 		struct dvb_mod_channel_params *cp = parg;
+		int res;
+		u32 ri;
 
-		if (cp->modulation > QAM_256)
+		res = mod_set_modulation(dev, output->nr, cp->modulation);
+		if (res)
+			return res;
+
+		if (cp->input_bitrate > dev->mod[output->nr].obitrate)
 			return -EINVAL;
-		dev->mod[output->nr].modulation = cp->modulation;
-		dev->mod[output->nr].rate_inc = cp->rate_increment;
-		ddbwritel(dev, dev->mod[output->nr].rate_inc,
-			  CHANNEL_RATE_INCR(output->nr));
+		dev->mod[output->nr].ibitrate = cp->input_bitrate;
+		dev->mod[output->nr].pcr_correction = cp->pcr_correction;
+
+		if (cp->input_bitrate != 0) {
+			u64 d = dev->mod[output->nr].obitrate -
+				dev->mod[output->nr].ibitrate;
+
+			d = div64_u64(d, dev->mod[output->nr].obitrate >> 24);
+			if (d > 0xfffffe)
+				ri = 0xfffffe;
+			else
+				ri = d;
+		} else
+			ri = 0;
+		dev->mod[output->nr].rate_inc = ri;
+		pr_info("ibr=%llu, obr=%llu, ri=0x%06x\n",
+			dev->mod[output->nr].ibitrate >> 32,
+			dev->mod[output->nr].obitrate >> 32,
+			ri);
 		break;
 	}
 	default:

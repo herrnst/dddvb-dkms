@@ -25,6 +25,8 @@ int main()
 	ioctl(fd, DVB_MOD_SET, &mp);
 
 	mc.modulation = QAM_256;
+	mc.input_bitrate = 30000000ULL << 32;
+	mc.pcr_correction = 0;
 	ioctl(fd, DVB_MOD_CHANNEL_SET, &mc);
 	close(fd);
 }

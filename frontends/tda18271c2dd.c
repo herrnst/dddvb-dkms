@@ -130,7 +130,7 @@ static int i2c_write(struct i2c_adapter *adap, u8 adr, u8 *data, int len)
 			      .buf = data, .len = len};
 
 	if (i2c_transfer(adap, &msg, 1) != 1) {
-		printk(KERN_ERR "tda18271c2dd: i2c write error at addr %i\n", adr);
+		pr_err("tda18271c2dd: i2c write error at addr %i\n", adr);
 		return -1;
 	}
 	return 0;
@@ -153,12 +153,12 @@ static int WriteReg(struct tda_state *state, u8 SubAddr, u8 Reg)
 	return i2c_write(state->i2c, state->adr, msg, 2);
 }
 
-static int Read(struct tda_state *state, u8 * Regs)
+static int Read(struct tda_state *state, u8 *Regs)
 {
 	return i2c_readn(state->i2c, state->adr, Regs, 16);
 }
 
-static int ReadExtented(struct tda_state *state, u8 * Regs)
+static int ReadExtented(struct tda_state *state, u8 *Regs)
 {
 	return i2c_readn(state->i2c, state->adr, Regs, NUM_REGS);
 }
@@ -309,7 +309,8 @@ static int StandBy(struct tda_state *state)
 		status = UpdateReg(state, EB12);
 		if (status < 0)
 			break;
-		state->m_Regs[EB18] &= ~0x83;  /* AGC1_loop_off = 0, AGC1_Gain = 6 dB */
+		/* AGC1_loop_off = 0, AGC1_Gain = 6 dB */
+		state->m_Regs[EB18] &= ~0x83;
 		status = UpdateReg(state, EB18);
 		if (status < 0)
 			break;
@@ -318,7 +319,8 @@ static int StandBy(struct tda_state *state)
 		status = UpdateReg(state, EP3);
 		if (status < 0)
 			break;
-		state->m_Regs[EB23] &= ~0x06; /* ForceLP_Fc2_En = 0, LP_Fc[2] = 0 */
+		/* ForceLP_Fc2_En = 0, LP_Fc[2] = 0 */
+		state->m_Regs[EB23] &= ~0x06;
 		status = UpdateRegs(state, EB21, EB23);
 		if (status < 0)
 			break;
@@ -639,7 +641,7 @@ static int PowerScan(struct tda_state *state,
 		if (status < 0)
 			break;
 		CID_Gain = Regs[EB10] & 0x3F;
-		state->m_Regs[ID] = Regs[ID];  /* Chip version, (needed for C1 workarround in CalibrateRF) */
+		state->m_Regs[ID] = Regs[ID];  /* Chip version, (needed for C1 workaround in CalibrateRF) */
 
 		*pRF_Out = RF_in;
 
@@ -732,7 +734,8 @@ static int CalcRFFilterCurve(struct tda_state *state)
 		status = RFTrackingFiltersInit(state, 6);
 		if (status < 0)
 			break;
-		status = ThermometerRead(state, &state->m_TMValue_RFCal); /* also switches off Cal mode !!! */
+		/* also switches off Cal mode !!! */
+		status = ThermometerRead(state, &state->m_TMValue_RFCal);
 		if (status < 0)
 			break;
 	} while (0);
@@ -791,7 +794,8 @@ static int FixedContentsI2CUpdate(struct tda_state *state)
 		state->m_Regs[MD1] = 0x77;
 		state->m_Regs[MD2] = 0x08;
 		state->m_Regs[MD3] = 0x00;
-		status = UpdateRegs(state, EP2, MD3); /* diff between sw and datasheet (ep3-md3) */
+		/* diff between sw and datasheet (ep3-md3) */
+		status = UpdateRegs(state, EP2, MD3);
 		if (status < 0)
 			break;
 
@@ -952,11 +956,14 @@ static int RFTrackingFiltersCorrection(struct tda_state *state,
 			break;
 
 		if (RF3 == 0 || Frequency < RF2)
-			Capprox = RF_A1 * ((s32)(Frequency) - (s32)(RF1)) + RF_B1 + Cprog_table;
+			Capprox = RF_A1 * ((s32)(Frequency) - (s32)(RF1)) +
+				RF_B1 + Cprog_table;
 		else
-			Capprox = RF_A2 * ((s32)(Frequency) - (s32)(RF2)) + RF_B2 + Cprog_table;
+			Capprox = RF_A2 * ((s32)(Frequency) - (s32)(RF2)) +
+				RF_B2 + Cprog_table;
 
-		TComp = (int)(dCoverdT) * ((int)(TMValue_Current) - (int)(state->m_TMValue_RFCal))/1000;
+		TComp = (int)(dCoverdT) * ((int)(TMValue_Current) -
+					   (int)(state->m_TMValue_RFCal))/1000;
 
 		Capprox += TComp;
 
@@ -966,8 +973,9 @@ static int RFTrackingFiltersCorrection(struct tda_state *state,
 			Capprox = 255;
 
 
-		/* TODO Temperature compensation. There is defenitely a scale factor */
-		/*      missing in the datasheet, so leave it out for now.           */
+		/* TODO Temperature compensation. There is
+		   definitely a scale factor missing in the datasheet,
+		   so leave it out for now. */
 		state->m_Regs[EB14] = Capprox;
 
 		status = UpdateReg(state, EB14);
@@ -999,51 +1007,67 @@ static int ChannelConfiguration(struct tda_state *state,
 	       SearchMap1(m_IR_Meas_Map, Frequency, &IR_Meas) &&
 	       SearchMap4(m_RF_Band_Map, Frequency, &RF_Band))) {
 
-		printk(KERN_ERR "tda18271c2dd: %s SearchMap failed\n", __func__);
+		pr_err("tda18271c2dd: %s SearchMap failed\n", __func__);
 		return -EINVAL;
 	}
 
 	do {
-		state->m_Regs[EP3] = (state->m_Regs[EP3] & ~0x1F) | m_StandardTable[Standard].m_EP3_4_0;
-		state->m_Regs[EP3] &= ~0x04;   /* switch RFAGC to high speed mode */
+		state->m_Regs[EP3] =
+			(state->m_Regs[EP3] & ~0x1F) |
+			m_StandardTable[Standard].m_EP3_4_0;
+		/*switch RFAGC to high speed mode */
+		state->m_Regs[EP3] &= ~0x04;
 
 		/* m_EP4 default for XToutOn, CAL_Mode (0) */
-		state->m_Regs[EP4] = state->m_EP4 | ((Standard > HF_AnalogMax) ? state->m_IFLevelDigital : state->m_IFLevelAnalog);
-		/* state->m_Regs[EP4] = state->m_EP4 | state->m_IFLevelDigital; */
+		state->m_Regs[EP4] = state->m_EP4 |
+			((Standard > HF_AnalogMax) ?
+			 state->m_IFLevelDigital : state->m_IFLevelAnalog);
+		/* state->m_Regs[EP4] = state->m_EP4 |
+		   state->m_IFLevelDigital; */
 		if (Standard <= HF_AnalogMax)
-			state->m_Regs[EP4] = state->m_EP4 | state->m_IFLevelAnalog;
+			state->m_Regs[EP4] = state->m_EP4 |
+				state->m_IFLevelAnalog;
 		else if (Standard <= HF_ATSC)
-			state->m_Regs[EP4] = state->m_EP4 | state->m_IFLevelDVBT;
+			state->m_Regs[EP4] = state->m_EP4 |
+				state->m_IFLevelDVBT;
 		else if (Standard <= HF_DVBC)
-			state->m_Regs[EP4] = state->m_EP4 | state->m_IFLevelDVBC;
+			state->m_Regs[EP4] = state->m_EP4 |
+				state->m_IFLevelDVBC;
 		else
-			state->m_Regs[EP4] = state->m_EP4 | state->m_IFLevelDigital;
+			state->m_Regs[EP4] = state->m_EP4 |
+				state->m_IFLevelDigital;
 
 		if ((Standard == HF_FM_Radio) && state->m_bFMInput)
 			state->m_Regs[EP4] |= 0x80;
 
 		state->m_Regs[MPD] &= ~0x80;
+		/* Add IF_notch for digital */
 		if (Standard > HF_AnalogMax)
-			state->m_Regs[MPD] |= 0x80; /* Add IF_notch for digital */
+			state->m_Regs[MPD] |= 0x80; 
 
 		state->m_Regs[EB22] = m_StandardTable[Standard].m_EB22;
 
-		/* Note: This is missing from flowchart in TDA18271 specification ( 1.5 MHz cutoff for FM ) */
+		/* Note: This is missing from flowchart in
+		   TDA18271 specification ( 1.5 MHz cutoff for FM ) */
+		/* ForceLP_Fc2_En = 1, LPFc[2] = 1 */
 		if (Standard == HF_FM_Radio)
-			state->m_Regs[EB23] |=  0x06; /* ForceLP_Fc2_En = 1, LPFc[2] = 1 */
+			state->m_Regs[EB23] |=  0x06;
 		else
-			state->m_Regs[EB23] &= ~0x06; /* ForceLP_Fc2_En = 0, LPFc[2] = 0 */
+			state->m_Regs[EB23] &= ~0x06;
+		/* ForceLP_Fc2_En = 0, LPFc[2] = 0 */
 
 		status = UpdateRegs(state, EB22, EB23);
 		if (status < 0)
 			break;
 
-		state->m_Regs[EP1] = (state->m_Regs[EP1] & ~0x07) | 0x40 | BP_Filter;   /* Dis_Power_level = 1, Filter */
+		state->m_Regs[EP1] = (state->m_Regs[EP1] & ~0x07) |
+			0x40 | BP_Filter;   /* Dis_Power_level = 1, Filter */
 		state->m_Regs[EP5] = (state->m_Regs[EP5] & ~0x07) | IR_Meas;
 		state->m_Regs[EP2] = (RF_Band << 5) | GainTaper;
 
+		/* CALVCO_FortLOn = MS */
 		state->m_Regs[EB1] = (state->m_Regs[EB1] & ~0x07) |
-			(state->m_bMaster ? 0x04 : 0x00); /* CALVCO_FortLOn = MS */
+			(state->m_bMaster ? 0x04 : 0x00);
 		/* AGC1_always_master = 0 */
 		/* AGC_firstn = 0 */
 		status = UpdateReg(state, EB1);
@@ -1051,7 +1075,8 @@ static int ChannelConfiguration(struct tda_state *state,
 			break;
 
 		if (state->m_bMaster) {
-			status = CalcMainPLL(state, Frequency + IntermediateFrequency);
+			status = CalcMainPLL(state,
+					     Frequency + IntermediateFrequency);
 			if (status < 0)
 				break;
 			status = UpdateRegs(state, TM, EP5);
@@ -1069,12 +1094,15 @@ static int ChannelConfiguration(struct tda_state *state,
 		} else {
 			u8 PostDiv = 0;
 			u8 Div;
-			status = CalcCalPLL(state, Frequency + IntermediateFrequency);
+			status = CalcCalPLL(state,
+					    Frequency + IntermediateFrequency);
 			if (status < 0)
 				break;
 
-			SearchMap3(m_Cal_PLL_Map, Frequency + IntermediateFrequency, &PostDiv, &Div);
-			state->m_Regs[MPD] = (state->m_Regs[MPD] & ~0x7F) | (PostDiv & 0x77);
+			SearchMap3(m_Cal_PLL_Map, Frequency +
+				   IntermediateFrequency, &PostDiv, &Div);
+			state->m_Regs[MPD] = (state->m_Regs[MPD] & ~0x7F) |
+				(PostDiv & 0x77);
 			status = UpdateReg(state, MPD);
 			if (status < 0)
 				break;
@@ -1094,7 +1122,7 @@ static int ChannelConfiguration(struct tda_state *state,
 		}
 		msleep(20);
 		if (Standard != HF_FM_Radio)
-			state->m_Regs[EP3] |= 0x04;    /* RFAGC to normal mode */
+			state->m_Regs[EP3] |= 0x04;  /* RFAGC to normal mode */
 		status = UpdateReg(state, EP3);
 		if (status < 0)
 			break;
@@ -1220,7 +1248,8 @@ static int set_params(struct dvb_frontend *fe,
 		status = RFTrackingFiltersCorrection(state, params->frequency);
 		if (status < 0)
 			break;
-		status = ChannelConfiguration(state, params->frequency, Standard);
+		status = ChannelConfiguration(state, params->frequency,
+					      Standard);
 		if (status < 0)
 			break;
 

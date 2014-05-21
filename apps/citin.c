@@ -31,7 +31,7 @@ void citest()
 	uint8_t id;
 	int i, nts;
 	int len;
-	int ts=open("/dev/dvb/adapter4/sec0", O_RDONLY);
+	int ts=open("/dev/dvb/adapter4/ci0", O_RDONLY);
 	buf=(uint8_t *)malloc(TSBUFSIZE);
 
 	

@@ -25,16 +25,6 @@
 #include "ddbridge.h"
 #include "ddbridge-regs.h"
 
-#include "tda18271c2dd.h"
-#include "stv6110x.h"
-#include "stv090x.h"
-#include "lnbh24.h"
-#include "drxk.h"
-#include "stv0367.h"
-#include "stv0367dd.h"
-#include "tda18212dd.h"
-#include "cxd2843.h"
-
 #include <asm-generic/pci-dma-compat.h>
 
 static int adapter_alloc = 3;
@@ -42,7 +32,7 @@ module_param(adapter_alloc, int, 0444);
 MODULE_PARM_DESC(adapter_alloc,
 "0-one adapter per io, 1-one per tab with io, 2-one per tab, 3-one for all");
 
-#define DVB_NETSTREAM
+#define DVB_NSD
 
 #include "ddbridge-core.c"
 
@@ -51,6 +41,7 @@ static struct ddb_info ddb_octonet = {
 	.name     = "Digital Devices OctopusNet network DVB adapter",
 	.port_num = 4,
 	.i2c_num  = 4,
+	.ns_num   = 12,
 };
 
 static void octonet_unmap(struct ddb *dev)
@@ -74,6 +65,7 @@ static int __exit octonet_remove(struct platform_device *pdev)
 	ddbwritel(dev, 0, INTERRUPT_ENABLE);
 	free_irq(platform_get_irq(dev->pfdev, 0), dev);
 
+	ddb_ports_release(dev);
 	ddb_device_destroy(dev);
 	octonet_unmap(dev);
 	platform_set_drvdata(pdev, 0);
@@ -99,7 +91,7 @@ static int __init octonet_probe(struct platform_device *pdev)
 		return -ENXIO;
 	dev->regs_len = (regs->end - regs->start) + 1;
 	dev_info(dev->dev, "regs_start=%08x regs_len=%08x\n",
-		 regs->start, dev->regs_len);
+		 (u32) regs->start, (u32) dev->regs_len);
 	dev->regs = ioremap(regs->start, dev->regs_len);
 	if (!dev->regs) {
 		dev_err(dev->dev, "ioremap failed\n");
@@ -171,7 +163,7 @@ static __init int init_octonet(void)
 {
 	int res;
 
-	pr_info("Digital Devices OctopusNet driver " DDBRIDGE_VERSION 
+	pr_info("Digital Devices OctopusNet driver " DDBRIDGE_VERSION
 		", Copyright (C) 2010-14 Digital Devices GmbH\n");
 	res = ddb_class_create();
 	if (res)

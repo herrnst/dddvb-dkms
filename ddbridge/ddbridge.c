@@ -25,29 +25,23 @@
 /*#define DDB_ALT_DMA*/
 #define DDB_USE_WORK
 /*#define DDB_TEST_THREADED*/
-#undef CONFIG_PCI_MSI
 
 #include "ddbridge.h"
 #include "ddbridge-regs.h"
-
-#include "tda18271c2dd.h"
-#include "stv6110x.h"
-#include "stv090x.h"
-#include "lnbh24.h"
-#include "drxk.h"
-#include "stv0367.h"
-#include "stv0367dd.h"
-#include "tda18212.h"
-#include "tda18212dd.h"
-#include "cxd2843.h"
 
 static struct workqueue_struct *ddb_wq;
 
 static int adapter_alloc;
 module_param(adapter_alloc, int, 0444);
 MODULE_PARM_DESC(adapter_alloc,
-		 "0-one adapter per io, 1-one per tab with io, "
-		 "2-one per tab, 3-one for all");
+		 "0-one adapter per io, 1-one per tab with io, 2-one per tab, 3-one for all");
+
+#ifdef CONFIG_PCI_MSI
+static int msi = 1;
+module_param(msi, int, 0444);
+MODULE_PARM_DESC(msi,
+		 " Control MSI interrupts: 0-disable, 1-enable (default)");
+#endif
 
 #include "ddbridge-core.c"
 
@@ -150,7 +144,7 @@ static int __devinit ddb_probe(struct pci_dev *pdev,
 	ddbwritel(dev, 0x00000000, MSI7_ENABLE);
 
 #ifdef CONFIG_PCI_MSI
-	if (pci_msi_enabled()) {
+	if (msi && pci_msi_enabled()) {
 		stat = pci_enable_msi_block(dev->pdev, 2);
 		if (stat == 0) {
 			dev->msi = 1;
@@ -165,7 +159,6 @@ static int __devinit ddb_probe(struct pci_dev *pdev,
 			dev->msi++;
 		}
 	}
-#endif
 	if (dev->msi == 2) {
 		stat = request_irq(dev->pdev->irq, irq_handler0,
 				   irq_flag, "ddbridge", (void *) dev);
@@ -177,7 +170,9 @@ static int __devinit ddb_probe(struct pci_dev *pdev,
 			free_irq(dev->pdev->irq, dev);
 			goto fail0;
 		}
-	} else {
+	} else
+#endif
+	{
 #ifdef DDB_TEST_THREADED
 		stat = request_threaded_irq(dev->pdev->irq, irq_handler,
 					    irq_thread,
@@ -255,20 +250,20 @@ fail:
 /****************************************************************************/
 /****************************************************************************/
 
-struct ddb_regset octopus_i2c = {
+static struct ddb_regset octopus_i2c = {
 	.base = 0x80,
 	.num  = 0x04,
 	.size = 0x20,
 };
 
 static struct ddb_regmap octopus_map = {
-/*	.i2c = octopus_i2c, */
+	.i2c = &octopus_i2c,
 };
 
 static struct ddb_info ddb_none = {
 	.type     = DDB_NONE,
 	.name     = "unknown Digital Devices PCIe card, install newer driver",
-/*	.regmap   = octopus_map, */
+	.regmap   = &octopus_map,
 };
 
 static struct ddb_info ddb_octopus = {
@@ -324,6 +319,14 @@ static struct ddb_info ddb_v6_5 = {
 	.i2c_num  = 4,
 };
 
+static struct ddb_info ddb_v7 = {
+	.type     = DDB_OCTOPUS,
+	.name     = "Digital Devices Cine S2 V7 DVB adapter",
+	.port_num = 4,
+	.i2c_num  = 4,
+	.board_control = 2,
+};
+
 static struct ddb_info ddb_ctv7 = {
 	.type     = DDB_OCTOPUS,
 	.name     = "Digital Devices Cine CT V7 DVB adapter",
@@ -367,13 +370,6 @@ static struct ddb_info ddb_mod = {
 	.temp_num = 1,
 };
 
-static struct ddb_info ddb_octonet = {
-	.type     = DDB_OCTONET,
-	.name     = "Digital Devices Octopus Net",
-	.port_num = 4,
-	.i2c_num  = 4,
-};
-
 #define DDVID 0xdd01 /* Digital Devices Vendor ID */
 
 #define DDB_ID(_vend, _dev, _subvend, _subdev, _driverdata) { \
@@ -390,9 +386,12 @@ static const struct pci_device_id ddb_id_tbl[] __devinitconst = {
 	DDB_ID(DDVID, 0x0003, DDVID, 0x0010, ddb_octopus_mini),
 	DDB_ID(DDVID, 0x0003, DDVID, 0x0020, ddb_v6),
 	DDB_ID(DDVID, 0x0003, DDVID, 0x0021, ddb_v6_5),
+	DDB_ID(DDVID, 0x0006, DDVID, 0x0032, ddb_v7),
 	DDB_ID(DDVID, 0x0003, DDVID, 0x0030, ddb_dvbct),
 	DDB_ID(DDVID, 0x0003, DDVID, 0xdb03, ddb_satixS2v3),
 	DDB_ID(DDVID, 0x0006, DDVID, 0x0031, ddb_ctv7),
+	DDB_ID(DDVID, 0x0006, DDVID, 0x0032, ddb_ctv7),
+	DDB_ID(DDVID, 0x0006, DDVID, 0x0033, ddb_ctv7),
 	DDB_ID(DDVID, 0x0011, DDVID, 0x0040, ddb_ci),
 	DDB_ID(DDVID, 0x0011, DDVID, 0x0041, ddb_cis),
 	DDB_ID(DDVID, 0x0201, DDVID, 0x0001, ddb_mod),
@@ -415,8 +414,8 @@ static __init int module_init_ddbridge(void)
 {
 	int stat = -1;
 
-	pr_info("Digital Devices PCIE bridge driver " 
-		DDBRIDGE_VERSION 
+	pr_info("Digital Devices PCIE bridge driver "
+		DDBRIDGE_VERSION
 		", Copyright (C) 2010-14 Digital Devices GmbH\n");
 	if (ddb_class_create() < 0)
 		return -1;

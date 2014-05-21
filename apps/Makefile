@@ -1,4 +1,4 @@
-all: cit flashprog modt ddtest setmod ddflash
+all: cit citin flashprog modt ddtest setmod ddflash
 
 cit: cit.c
 	gcc -o cit cit.c -lpthread

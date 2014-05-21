@@ -763,7 +763,7 @@ static int dvb_ca_en50221_write_data(struct dvb_ca_private *ca, int slot, u8 * b
 		status = -EAGAIN;
 		goto exit;
 	}
-
+#if 0
 	/* It may need some time for the CAM to settle down, or there might be a
 	   race condition between the CAM, writing HC and our last check for DA.
 	   This happens, if the CAM asserts DA, just after checking DA before we
@@ -781,7 +781,7 @@ static int dvb_ca_en50221_write_data(struct dvb_ca_private *ca, int slot, u8 * b
 		status = -EAGAIN;
 		goto exit;
 	}
-
+#endif
 	/* send the amount of data */
 	if ((status = ca->pub->write_cam_control(ca->pub, slot, CTRLIF_SIZE_HIGH, bytes_write >> 8)) != 0)
 		goto exit;
@@ -1086,10 +1086,15 @@ static int dvb_ca_en50221_thread(void *data)
 							break;
 						}
 					}
-
+					
 					printk("dvb_ca adapter %d: Invalid PC card inserted :(\n",
-					       ca->dvbdev->adapter->num);
-					//ca->slot_info[slot].slot_state = DVB_CA_SLOTSTATE_INVALID;
+						ca->dvbdev->adapter->num);
+#if 0
+					ca->slot_info[slot].slot_state = DVB_CA_SLOTSTATE_INVALID;
+#else
+					printk("dvb_ca adapter %d: Trying to read attribute memory again (some CAMs are slow)\n",
+						ca->dvbdev->adapter->num);
+#endif
 					dvb_ca_en50221_thread_update_delay(ca);
 					break;
 				}
@@ -1119,7 +1124,14 @@ static int dvb_ca_en50221_thread(void *data)
 				if (time_after(jiffies, ca->slot_info[slot].timeout)) {
 					printk("dvb_ca adapter %d: DVB CAM did not respond :(\n",
 					       ca->dvbdev->adapter->num);
+#if 0
 					ca->slot_info[slot].slot_state = DVB_CA_SLOTSTATE_INVALID;
+#else
+					printk("dvb_ca adapter %d: Ignoring missing FR (some CAMs are broken)\n",
+					       ca->dvbdev->adapter->num);
+					ca->slot_info[slot].slot_state = DVB_CA_SLOTSTATE_LINKINIT;
+					ca->wakeup = 1;
+#endif
 					dvb_ca_en50221_thread_update_delay(ca);
 					break;
 				}

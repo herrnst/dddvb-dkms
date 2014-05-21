@@ -321,6 +321,7 @@ static void ddb_output_start(struct ddb_output *output)
 		spin_lock_irq(&output->dma->lock);
 		output->dma->cbuf = 0;
 		output->dma->coff = 0;
+		output->dma->stat = 0;
 		ddbwritel(dev, 0, DMA_BUFFER_CONTROL(output->dma->nr));
 	}
 	if (output->port->class == DDB_PORT_MOD)
@@ -395,6 +396,7 @@ static void ddb_input_start(struct ddb_input *input)
 		spin_lock_irq(&input->dma->lock);
 		input->dma->cbuf = 0;
 		input->dma->coff = 0;
+		input->dma->stat = 0;
 		ddbwritel(dev, 0, DMA_BUFFER_CONTROL(input->dma->nr));
 	}
 	ddbwritel(dev, 0, TS_INPUT_CONTROL2(input->nr));
@@ -494,6 +496,7 @@ static u32 ddb_output_free(struct ddb_output *output)
 	return 0;
 }
 
+#if 0
 static u32 ddb_dma_free(struct ddb_dma *dma)
 {
 	u32 idx, off, stat = dma->stat;
@@ -510,6 +513,7 @@ static u32 ddb_dma_free(struct ddb_dma *dma)
 		diff += dma->num * dma->size;
 	return diff;
 }
+#endif
 
 static ssize_t ddb_output_write(struct ddb_output *output,
 				const u8 *buf, size_t count)
@@ -566,6 +570,7 @@ static ssize_t ddb_output_write(struct ddb_output *output,
 	return count - left;
 }
 
+#if 0
 static u32 ddb_input_free_bytes(struct ddb_input *input)
 {
 	struct ddb *dev = input->port->dev;
@@ -581,6 +586,8 @@ static u32 ddb_input_free_bytes(struct ddb_input *input)
 		return 1;
 	return 0;
 }
+
+
 
 static s32 ddb_output_used_bufs(struct ddb_output *output)
 {
@@ -636,6 +643,7 @@ static u32 ddb_output_ok(struct ddb_output *output)
 		return 1;
 	return 0;
 }
+#endif
 
 static u32 ddb_input_avail(struct ddb_input *input)
 {
@@ -651,7 +659,7 @@ static u32 ddb_input_avail(struct ddb_input *input)
 		ddbwritel(dev, stat, DMA_BUFFER_ACK(input->dma->nr));
 		return 0;
 	}
-	if (input->dma->cbuf != idx || off < input->dma->coff)
+	if (input->dma->cbuf != idx)
 		return 188;
 	return 0;
 }
@@ -734,12 +742,11 @@ static ssize_t ts_read(struct file *file, char *buf,
 	struct ddb_output *output = dvbdev->priv;
 	struct ddb_input *input = output->port->input[0];
 	struct ddb *dev = output->port->dev;
-	int left, read;
+	size_t left = count;
+	int stat;
 
 	if (!dev->has_dma)
 		return -EINVAL;
-	count -= count % 188;
-	left = count;
 	while (left) {
 		if (ddb_input_avail(input) < 188) {
 			if (file->f_flags & O_NONBLOCK)
@@ -749,11 +756,13 @@ static ssize_t ts_read(struct file *file, char *buf,
 				    ddb_input_avail(input) >= 188) < 0)
 				break;
 		}
-		read = ddb_input_read(input, buf, left);
-		left -= read;
-		buf += read;
+		stat = ddb_input_read(input, buf, left);
+		if (stat < 0)
+			return stat;
+		left -= stat;
+		buf += stat;
 	}
-	return (left == count) ? -EAGAIN : (count - left);
+	return (count && (left == count)) ? -EAGAIN : (count - left);
 }
 
 static unsigned int ts_poll(struct file *file, poll_table *wait)
@@ -821,7 +830,6 @@ static int mod_release(struct inode *inode, struct file *file)
 {
 	struct dvb_device *dvbdev = file->private_data;
 	struct ddb_output *output = dvbdev->priv;
-	struct ddb_input *input = output->port->input[0];
 
 	if ((file->f_flags & O_ACCMODE) == O_WRONLY) {
 		if (!output)
@@ -1013,10 +1021,12 @@ static int demod_attach_cxd2843(struct ddb_input *input, int par)
 
 	if (par)
 		fe = dvb->fe = dvb_attach(cxd2843_attach, i2c,
-					  (input->nr & 1) ? &cxd2843p_1 : &cxd2843p_0);
+					  (input->nr & 1) ?
+					  &cxd2843p_1 : &cxd2843p_0);
 	else
 		fe = dvb->fe = dvb_attach(cxd2843_attach, i2c,
-					  (input->nr & 1) ? &cxd2843_1 : &cxd2843_0);
+					  (input->nr & 1) ?
+					  &cxd2843_1 : &cxd2843_0);
 	if (!dvb->fe) {
 		pr_err("No cxd2837/38/43 found!\n");
 		return -ENODEV;
@@ -1230,6 +1240,47 @@ static int tuner_attach_stv6110(struct ddb_input *input, int type)
 	return 0;
 }
 
+static struct stv0910_cfg stv0910 = {
+	.adr      = 0x68,
+	.parallel = 1,
+	.rptlvl   = 4,
+	.clk      = 30000000,
+};
+
+static int demod_attach_stv0910(struct ddb_input *input, int type)
+{
+	struct i2c_adapter *i2c = &input->port->i2c->adap;
+
+	struct ddb_dvb *dvb = &input->port->dvb[input->nr & 1];
+
+	dvb->fe = dvb_attach(stv0910_attach, i2c, &stv0910, (input->nr & 1));
+	if (!dvb->fe) {
+		pr_err("No STV0910 found!\n");
+		return -ENODEV;
+	}
+	if (!dvb_attach(lnbh25_attach, dvb->fe, i2c,
+			(input->nr & 1) ? 0x09 : 0x08)) {
+		pr_err("No LNBH25 found!\n");
+		return -ENODEV;
+	}
+	return 0;
+}
+
+static int tuner_attach_stv6111(struct ddb_input *input)
+{
+	struct i2c_adapter *i2c = &input->port->i2c->adap;
+	struct ddb_dvb *dvb = &input->port->dvb[input->nr & 1];
+	struct dvb_frontend *fe;
+
+	fe = dvb_attach(stv6111_attach, dvb->fe, i2c,
+			(input->nr & 1) ? 0x63 : 0x60);
+	if (!fe) {
+		pr_err("No STV6111 found!\n");
+		return -ENODEV;
+	}
+	return 0;
+}
+
 static int my_dvb_dmx_ts_card_init(struct dvb_demux *dvbdemux, char *id,
 				   int (*start_feed)(struct dvb_demux_feed *),
 				   int (*stop_feed)(struct dvb_demux_feed *),
@@ -1270,6 +1321,7 @@ static int my_dvb_dmxdev_ts_card_init(struct dmxdev *dmxdev,
 	return dvbdemux->dmx.connect_frontend(&dvbdemux->dmx, hw_frontend);
 }
 
+#if 0
 static int start_input(struct ddb_input *input)
 {
 	struct ddb_dvb *dvb = &input->port->dvb[input->nr & 1];
@@ -1290,6 +1342,7 @@ static int stop_input(struct ddb_input *input)
 	ddb_input_stop_all(input);
 	return 0;
 }
+#endif
 
 static int start_feed(struct dvb_demux_feed *dvbdmxfeed)
 {
@@ -1327,15 +1380,18 @@ static void dvb_input_detach(struct ddb_input *input)
 			dvb_unregister_frontend(dvb->fe2);
 		if (dvb->fe)
 			dvb_unregister_frontend(dvb->fe);
+		/* fallthrough */
 	case 0x30:
 		dvb_frontend_detach(dvb->fe);
 		dvb->fe = dvb->fe2 = NULL;
-#ifdef DVB_NETSTREAM
+		/* fallthrough */
 	case 0x21:
-		dvb_netstream_release(&dvb->dvbns);
-#endif
+		if (input->port->dev->ns_num)
+			dvb_netstream_release(&dvb->dvbns);
+		/* fallthrough */
 	case 0x20:
 		dvb_net_release(&dvb->dvbnet);
+		/* fallthrough */
 	case 0x11:
 		dvbdemux->dmx.close(&dvbdemux->dmx);
 		dvbdemux->dmx.remove_frontend(&dvbdemux->dmx,
@@ -1343,8 +1399,10 @@ static void dvb_input_detach(struct ddb_input *input)
 		dvbdemux->dmx.remove_frontend(&dvbdemux->dmx,
 					      &dvb->mem_frontend);
 		dvb_dmxdev_release(&dvb->dmxdev);
+		/* fallthrough */
 	case 0x10:
 		dvb_dmx_release(&dvb->demux);
+		/* fallthrough */
 	case 0x01:
 		break;
 	}
@@ -1480,18 +1538,24 @@ static int dvb_input_attach(struct ddb_input *input)
 		return ret;
 	dvb->attached = 0x20;
 
-#ifdef DVB_NETSTREAM
-	ret = netstream_init(input);
-	if (ret < 0)
-		return ret;
-	dvb->attached = 0x21;
-#endif
+	if (input->port->dev->ns_num) {
+		ret = netstream_init(input);
+		if (ret < 0)
+			return ret;
+		dvb->attached = 0x21;
+	}
 	dvb->fe = dvb->fe2 = 0;
 	switch (port->type) {
 	case DDB_TUNER_DVBS_ST:
 		if (demod_attach_stv0900(input, 0) < 0)
 			return -ENODEV;
 		if (tuner_attach_stv6110(input, 0) < 0)
+			return -ENODEV;
+		break;
+	case DDB_TUNER_DVBS_STV0910:
+		if (demod_attach_stv0910(input, 0) < 0)
+			return -ENODEV;
+		if (tuner_attach_stv6111(input) < 0)
 			return -ENODEV;
 		break;
 	case DDB_TUNER_DVBS_ST_AA:
@@ -1524,6 +1588,7 @@ static int dvb_input_attach(struct ddb_input *input)
 		break;
 	case DDB_TUNER_DVBCT2_SONY_P:
 	case DDB_TUNER_DVBC2T2_SONY_P:
+	case DDB_TUNER_ISDBT_SONY_P:
 		if (demod_attach_cxd2843(input, 1) < 0)
 			return -ENODEV;
 		if (tuner_attach_tda18212dd(input) < 0)
@@ -1640,6 +1705,7 @@ static int port_has_stv0367(struct ddb_port *port)
 	return 1;
 }
 
+#if 0
 static int init_xo2_old(struct ddb_port *port)
 {
 	struct i2c_adapter *i2c = &port->i2c->adap;
@@ -1672,6 +1738,7 @@ static int init_xo2_old(struct ddb_port *port)
 
 	return 0;
 }
+#endif
 
 static int init_xo2(struct ddb_port *port)
 {
@@ -1710,14 +1777,21 @@ static int port_has_cxd28xx(struct ddb_port *port, u8 *id)
 	struct i2c_adapter *i2c = &port->i2c->adap;
 	int status;
 
-	status = i2c_write_reg(&port->i2c->adap, 0x6c, 0, 0);
+	status = i2c_write_reg(&port->i2c->adap, 0x6e, 0, 0);
 	if (status)
 		return 0;
-	status = i2c_read_reg(i2c, 0x6c, 0xfd, id);
+	status = i2c_read_reg(i2c, 0x6e, 0xfd, id);
 	if (status)
 		return 0;
 	return 1;
 }
+
+static char *xo2names[] = {
+	"DUAL DVB-S2", "DUAL DVB-C/T/T2",
+	"DUAL DVB-ISDBT", "DUAL DVB-C/C2/T/T2",
+	"DUAL ATSC", "DUAL DVB-C/C2/T/T2",
+	"", ""
+};
 
 static void ddb_port_probe(struct ddb_port *port)
 {
@@ -1750,10 +1824,6 @@ static void ddb_port_probe(struct ddb_port *port)
 			return;
 		}
 	} else if (port_has_xo2(port, &id)) {
-		char *xo2names[] = { "DUAL DVB-S2", "DUAL DVB-C/T/T2",
-				     "DUAL DVB-ISDBT", "DUAL DVB-C/C2/T/T2",
-				     "DUAL ATSC", "DUAL DVB-C/C2/T/T2" };
-
 		ddbwritel(dev, I2C_SPEED_400, port->i2c->regs + I2C_TIMING);
 		id >>= 2;
 		if (id > 5) {
@@ -1776,7 +1846,7 @@ static void ddb_port_probe(struct ddb_port *port)
 			break;
 		case 0xb0:
 			port->name = "DUAL ISDB-T CXD2838";
-			/* there is no non-xo2 version of this */
+			port->type = DDB_TUNER_ISDBT_SONY_P;
 			break;
 		default:
 			return;
@@ -2040,6 +2110,14 @@ static int ddb_ports_attach(struct ddb *dev)
 	int i, ret = 0;
 	struct ddb_port *port;
 
+	if (dev->ids.devid == 0x0301dd01)
+		dev->ns_num = 15;
+	else
+		dev->ns_num = dev->info->ns_num;
+	for (i = 0; i < dev->ns_num; i++)
+		dev->ns[i].nr = i;
+	pr_info("%d netstream channels\n", dev->ns_num);
+
 	if (dev->info->port_num) {
 		ret = dvb_register_adapters(dev);
 		if (ret < 0) {
@@ -2166,7 +2244,6 @@ static void input_tasklet(unsigned long data)
 	dma->stat = ddbreadl(dev, DMA_BUFFER_CURRENT(dma->nr));
 	dma->ctrl = ddbreadl(dev, DMA_BUFFER_CONTROL(dma->nr));
 
-	/*pr_err("IT %d.%d %08x\n", dev->nr, dma->nr, dma->ctrl);*/
 #if 0
 	if (4 & dma->ctrl)
 		pr_err("Overflow dma %d\n", dma->nr);
@@ -2204,13 +2281,15 @@ static void input_handler(unsigned long data)
 /* hmm, don't really need this anymore.
    The output IRQ just copies some pointers, acks and wakes. */
 
+#ifdef DDB_USE_WORK
 static void output_work(struct work_struct *work)
 {
 }
-
+#else
 static void output_tasklet(unsigned long data)
 {
 }
+#endif
 
 static void output_handler(unsigned long data)
 {
@@ -2372,6 +2451,8 @@ static void ddb_ports_release(struct ddb *dev)
 	int i;
 	struct ddb_port *port;
 
+	if (!dev->has_dma)
+		return;
 	for (i = 0; i < dev->info->port_num; i++) {
 		port = &dev->port[i];
 #ifdef DDB_USE_WORK
@@ -2497,19 +2578,22 @@ static irqreturn_t irq_handler(int irq, void *dev_id)
 	return ret;
 }
 
+#ifdef DDB_TEST_THREADED
 static irqreturn_t irq_thread(int irq, void *dev_id)
 {
-	struct ddb *dev = (struct ddb *) dev_id;
+	/* struct ddb *dev = (struct ddb *) dev_id; */
 
 	/*pr_info("%s\n", __func__);*/
 
 	return IRQ_HANDLED;
 }
+#endif
 
+/****************************************************************************/
+/****************************************************************************/
+/****************************************************************************/
 
-/****************************************************************************/
-/****************************************************************************/
-/****************************************************************************/
+#ifdef DVB_NSD
 
 static ssize_t nsd_read(struct file *file, char *buf,
 			size_t count, loff_t *ppos)
@@ -2537,7 +2621,7 @@ static int nsd_do_ioctl(struct file *file, unsigned int cmd, void *parg)
 	struct dvb_device *dvbdev = file->private_data;
 	struct ddb *dev = dvbdev->priv;
 
-	unsigned long arg = (unsigned long) parg;
+	/* unsigned long arg = (unsigned long) parg; */
 	int ret = 0;
 
 	switch (cmd) {
@@ -2665,6 +2749,7 @@ static void ddb_nsd_detach(struct ddb *dev)
 	dvb_unregister_device(dev->nsd_dev);
 }
 
+#endif
 
 /****************************************************************************/
 /****************************************************************************/
@@ -3112,6 +3197,7 @@ static ssize_t temp_show(struct device *device,
 	return sprintf(buf, "%d\n", temp);
 }
 
+#if 0
 static ssize_t qam_show(struct device *device,
 			struct device_attribute *attr, char *buf)
 {
@@ -3128,6 +3214,7 @@ static ssize_t qam_show(struct device *device,
 
 	return sprintf(buf, "%d %d\n", i, q);
 }
+#endif
 
 static ssize_t mod_show(struct device *device,
 			struct device_attribute *attr, char *buf)
@@ -3207,14 +3294,15 @@ static ssize_t snr_show(struct device *device,
 	struct ddb *dev = dev_get_drvdata(device);
 	char snr[32];
 	int num = attr->attr.name[3] - 0x30;
-	
+
 	if (dev->port[num].type >= DDB_TUNER_XO2) {
 		if (i2c_read_regs(&dev->i2c[num].adap, 0x10, 0x10, snr, 16) < 0)
 			return sprintf(buf, "NO SNR\n");
 		snr[16] = 0;
 	} else {
 		/* serial number at 0x100-0x11f */
-		if (i2c_read_regs16(&dev->i2c[num].adap, 0x50, 0x100, snr, 32) < 0)
+		if (i2c_read_regs16(&dev->i2c[num].adap,
+				    0x50, 0x100, snr, 32) < 0)
 			if (i2c_read_regs16(&dev->i2c[num].adap,
 					    0x57, 0x100, snr, 32) < 0)
 				return sprintf(buf, "NO SNR\n");
@@ -3424,7 +3512,7 @@ static void ddb_device_attrs_del(struct ddb *dev)
 static int ddb_device_attrs_add(struct ddb *dev)
 {
 	int i;
-	
+
 	for (i = 0; ddb_attrs[i].attr.name; i++)
 		if (device_create_file(dev->ddb_dev, &ddb_attrs[i]))
 			goto fail;

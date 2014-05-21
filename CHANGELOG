@@ -1,3 +1,9 @@
+0.9.14 2014.04.20
+- support for CineCT V7 with C2
+- initial support for STV0910/STV6111/LNBH25
+- more coding style cleanups
+- API changes for modulator
+
 0.9.13 2014.03.25
 - support for CineCT V7
 

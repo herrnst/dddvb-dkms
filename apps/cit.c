@@ -58,7 +58,7 @@ void proc_buf(uint8_t *buf, uint32_t *d)
 			printf("T %d\n", tc);
 		return;
 	}
-	printf("%02x %02x %02x %02x\n", buf[0], buf[1], buf [2], buf[3]);
+	//printf("%02x %02x %02x %02x\n", buf[0], buf[1], buf [2], buf[3]);
 	if (buf[1]!=0x0a || buf[2]!=0xaa)
 		return;
 	c=(buf[4]<<24)|(buf[5]<<16)|(buf[6]<<8)|buf[7];
@@ -69,7 +69,7 @@ void proc_buf(uint8_t *buf, uint32_t *d)
 		if (memcmp(ts+8, buf+8, 180))
 			printf("error\n");
 		if (!(c&0xffff))
-			printf("R %d\n", c);
+			printf("R %08x\n", c);
 	}
 	(*d)++;
 }
@@ -79,7 +79,7 @@ void *get_ts(void *a)
 	uint8_t buf[188*1024];
 	int len, off;
 
-	int fdi=open("/dev/dvb/adapter0/ci0", O_RDONLY);
+	int fdi=open("/dev/dvb/adapter4/ci0", O_RDONLY);
 	uint32_t d=0;
 
 	while (1) {
@@ -105,7 +105,7 @@ void send(void)
 	uint32_t c=0;
 	int fdo;
 
-	fdo=open("/dev/dvb/adapter0/ci0", O_WRONLY);
+	fdo=open("/dev/dvb/adapter4/ci0", O_WRONLY);
 
 
 	while (1) {
@@ -116,7 +116,7 @@ void send(void)
 			cts[5]=(c>>16);
 			cts[6]=(c>>8);
 			cts[7]=c;
-			//write(fdo, fill, 188);
+			write(fdo, fill, 188);
 			//printf("S %d\n", c); 
 			c++;
 			//usleep(100000+0xffff&rand());
