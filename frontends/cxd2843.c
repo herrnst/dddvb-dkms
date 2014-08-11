@@ -1170,7 +1170,8 @@ static void init(struct cxd_state *state)
 	writeregx(state, 0xFF, 0x02, 0x00);
 	usleep_range(4000, 5000);
 	writeregx(state, 0x00, 0x15, 0x01);
-	writeregx(state, 0x00, 0x17, 0x01);
+	if (state->type != CXD2838)
+		writeregx(state, 0x00, 0x17, 0x01);
 	usleep_range(4000, 5000);
 
 	writeregx(state, 0x00, 0x10, 0x01);

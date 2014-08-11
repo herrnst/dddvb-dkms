@@ -3,6 +3,7 @@
  *
  * Copyright (C) 2010-2013 Digital Devices GmbH
  *                         Ralph Metzler <rmetzler@digitaldevices.de>
+ *                         Marcus Metzler <mmetzler@digitaldevices.de>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -197,6 +198,7 @@ static int __devinit ddb_probe(struct pci_dev *pdev,
 		ddbwritel(dev, 0x0fffff0f, INTERRUPT_ENABLE);
 		ddbwritel(dev, 0x00000000, MSI1_ENABLE);
 	}
+	mutex_init(&dev->lnb_lock);
 	if (ddb_i2c_init(dev) < 0)
 		goto fail1;
 	ddb_ports_init(dev);
@@ -327,6 +329,14 @@ static struct ddb_info ddb_v7 = {
 	.board_control = 2,
 };
 
+static struct ddb_info ddb_s2_48 = {
+	.type     = DDB_OCTOPUS_MAX,
+	.name     = "Digital Devices Cine S2 4/8",
+	.port_num = 4,
+	.i2c_num  = 1,
+	.board_control = 1,
+};
+
 static struct ddb_info ddb_ctv7 = {
 	.type     = DDB_OCTOPUS,
 	.name     = "Digital Devices Cine CT V7 DVB adapter",
@@ -392,6 +402,7 @@ static const struct pci_device_id ddb_id_tbl[] __devinitconst = {
 	DDB_ID(DDVID, 0x0006, DDVID, 0x0031, ddb_ctv7),
 	DDB_ID(DDVID, 0x0006, DDVID, 0x0032, ddb_ctv7),
 	DDB_ID(DDVID, 0x0006, DDVID, 0x0033, ddb_ctv7),
+	DDB_ID(DDVID, 0x0007, DDVID, 0x0023, ddb_s2_48),
 	DDB_ID(DDVID, 0x0011, DDVID, 0x0040, ddb_ci),
 	DDB_ID(DDVID, 0x0011, DDVID, 0x0041, ddb_cis),
 	DDB_ID(DDVID, 0x0201, DDVID, 0x0001, ddb_mod),
@@ -446,4 +457,4 @@ module_exit(module_exit_ddbridge);
 MODULE_DESCRIPTION("Digital Devices PCIe Bridge");
 MODULE_AUTHOR("Ralph Metzler, Metzler Brothers Systementwicklung");
 MODULE_LICENSE("GPL");
-MODULE_VERSION(DDBRIDGE_VERSION);
+MODULE_VERSION(DDBRIDGE_VERSION); 

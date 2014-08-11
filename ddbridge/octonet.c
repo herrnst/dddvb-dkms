@@ -42,6 +42,7 @@ static struct ddb_info ddb_octonet = {
 	.port_num = 4,
 	.i2c_num  = 4,
 	.ns_num   = 12,
+	.mdio_num = 1,
 };
 
 static void octonet_unmap(struct ddb *dev)
@@ -54,9 +55,9 @@ static void octonet_unmap(struct ddb *dev)
 static int __exit octonet_remove(struct platform_device *pdev)
 {
 	struct ddb *dev;
-
+	
 	dev = platform_get_drvdata(pdev);
-
+	
 	ddb_nsd_detach(dev);
 	ddb_ports_detach(dev);
 	ddb_i2c_release(dev);
@@ -76,6 +77,7 @@ static int __init octonet_probe(struct platform_device *pdev)
 {
 	struct ddb *dev;
 	struct resource *regs;
+	int i;
 
 	dev = vzalloc(sizeof(struct ddb));
 	if (!dev)
@@ -111,12 +113,18 @@ static int __init octonet_probe(struct platform_device *pdev)
 	pr_info("HW  %08x REGMAP %08x\n", dev->ids.hwid, dev->ids.regmapid);
 	pr_info("MAC %08x DEVID  %08x\n", dev->ids.mac, dev->ids.devid);
 
+	ddbwritel(dev, 0, ETHER_CONTROL);
 	ddbwritel(dev, 0x00000000, INTERRUPT_ENABLE);
-
+	ddbwritel(dev, 0xffffffff, INTERRUPT_STATUS);
+	for (i = 0; i < 16; i++)
+		ddbwritel(dev, 0x00, TS_OUTPUT_CONTROL(i));
+	usleep_range(5000, 6000);
+	
 	if (request_irq(platform_get_irq(dev->pfdev, 0), irq_handler,
 			IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
 			"octonet-dvb", (void *) dev) < 0)
 		goto fail;
+
 	ddbwritel(dev, 0x0fffff0f, INTERRUPT_ENABLE);
 	ddbwritel(dev, 0x1, ETHER_CONTROL);
 	ddbwritel(dev, 14 + (vlan ? 4 : 0), ETHER_LENGTH);
@@ -186,6 +194,6 @@ module_init(init_octonet);
 module_exit(exit_octonet);
 
 MODULE_DESCRIPTION("GPL");
-MODULE_AUTHOR("Ralph Metzler, Metzler Brothers Systementwicklung");
+MODULE_AUTHOR("Marcus and Ralph Metzler, Metzler Brothers Systementwicklung");
 MODULE_LICENSE("GPL");
 MODULE_VERSION("0.5");

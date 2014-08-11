@@ -1015,6 +1015,7 @@ static void release(struct dvb_frontend *fe)
 	if (state->base->count == 0) {
 		pr_info("remove STV base\n");
 		list_del(&state->base->stvlist);
+		kfree(state->base);
 	}
 	kfree(state);
 }
@@ -1240,8 +1241,10 @@ static int read_ber(struct dvb_frontend *fe, u32 *ber)
 	u32 n, d;
 
 	GetBitErrorRate(state, &n, &d);
-	*ber = n / d;
-
+	if (d) 
+		*ber = n / d;
+	else
+		*ber = 0;
 	return 0;
 }
 

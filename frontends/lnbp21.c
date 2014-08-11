@@ -54,6 +54,12 @@ static int lnbp21_set_voltage(struct dvb_frontend *fe,
 
 	lnbp21->config &= ~(LNBP21_VSEL | LNBP21_EN);
 
+	
+	if ((lnbp21->config & LNBP21_EN) == 0)
+		lnbp21->config |= 0x80;
+	else
+		lnbp21->config &= 0x7f;
+
 	switch(voltage) {
 	case SEC_VOLTAGE_OFF:
 		break;
@@ -170,7 +176,7 @@ struct dvb_frontend *lnbh24_attach(struct dvb_frontend *fe,
 				u8 override_clear, u8 i2c_addr)
 {
 	return lnbx2x_attach(fe, i2c, override_set, override_clear,
-							i2c_addr, LNBH24_TTX);
+			     i2c_addr, LNBH24_TTX);
 }
 EXPORT_SYMBOL(lnbh24_attach);
 
@@ -179,7 +185,7 @@ struct dvb_frontend *lnbp21_attach(struct dvb_frontend *fe,
 				u8 override_clear)
 {
 	return lnbx2x_attach(fe, i2c, override_set, override_clear,
-							0x08, LNBP21_ISEL);
+			     0x08, LNBP21_ISEL);
 }
 EXPORT_SYMBOL(lnbp21_attach);
 

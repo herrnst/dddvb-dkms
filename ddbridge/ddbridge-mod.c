@@ -1,7 +1,7 @@
 /*
  * ddbridge.c: Digital Devices PCIe bridge driver
  *
- * Copyright (C) 2010-2013 Digital Devices GmbH
+ * Copyright (C) 2010-2014 Digital Devices GmbH
  *                         Ralph Metzler <rmetzler@digitaldevices.de>
  *                         Marcus Metzler <mmetzler@digitaldevices.de>
  *
@@ -890,6 +890,16 @@ fail:
 	return stat;
 }
 
+#define PACKET_CLOCKS  (27000000ULL*1504)
+#define FACTOR         (1ULL << 22)
+
+/*
+  double Increment =  FACTOR*PACKET_CLOCKS/double(m_OutputBitrate);
+  double Decrement =  FACTOR*PACKET_CLOCKS/double(m_InputBitrate);
+  
+  27000000 * 1504 * 2^22 / (6900000 * 188 / 204) = 26785190066.1
+*/
+
 void ddbridge_mod_rate_handler(unsigned long data)
 {
 	struct ddb_output *output = (struct ddb_output *) data;
@@ -947,39 +957,40 @@ void ddbridge_mod_rate_handler(unsigned long data)
 	case CM_STARTUP:
 		if (mod->StateCounter) {
 			if (mod->StateCounter == 1) {
-				mul = (0x1000000 * (u64) (OutPacketDiff -
-							  InPacketDiff -
-							  InPacketDiff/1000));
-				if (OutPacketDiff)
-					mod->rate_inc =
-						div_u64(mul, OutPacketDiff);
-				else
-					mod->rate_inc = 0;
-				mod_set_rateinc(dev, output->nr);
-/*
-#define PACKET_CLOCKS  (27000000ULL*1504)
-#define FACTOR  (1<<22)
-double Increment =  FACTOR*PACKET_CLOCKS/double(m_OutputBitrate);
-double Decrement =  FACTOR*PACKET_CLOCKS/double(m_InputBitrate);
-
-27000000 * 1504 * 2^22 / (6900000 * 188 / 204) = 26785190066.1
-*/
-				mod->PCRIncrement =
-					div_u64(26785190066ULL,
-						mod->modulation + 3);
-				if (InPacketDiff)
+				if (mod->ibitrate == 0) {
+					mul = (0x1000000 * (u64) (OutPacketDiff -
+								  InPacketDiff -
+								  InPacketDiff/1000));
+					if (OutPacketDiff)
+						mod->rate_inc =
+							div_u64(mul, OutPacketDiff);
+					else
+						mod->rate_inc = 0;
+					mod_set_rateinc(dev, output->nr);
+					mod->PCRIncrement =
+						div_u64(26785190066ULL,
+							mod->modulation + 3);
+					if (InPacketDiff)
+						mod->PCRDecrement =
+							div_u64(mod->PCRIncrement *
+								(u64) OutPacketDiff,
+								InPacketDiff);
+					else
+						mod->PCRDecrement = 0;
+					mod_set_incs(output);
+				} else {
+					mod->PCRIncrement =
+						div_u64(26785190066ULL,
+							mod->modulation + 3);
 					mod->PCRDecrement =
-						div_u64(mod->PCRIncrement *
-							(u64) OutPacketDiff,
-							InPacketDiff);
-				else
-					mod->PCRDecrement = 0;
-				mod_set_incs(output);
+						div_u64(FACTOR*PACKET_CLOCKS,
+							mod->ibitrate >> 32);
+					mod_set_incs(output);
+				}
 			}
 			mod->StateCounter--;
 			break;
-		}
-		if (InPacketDiff >= mod->MinInputPackets) {
+		} else if (InPacketDiff >= mod->MinInputPackets) {
 			mod->State = CM_ADJUST;
 			mod->Control |= CHANNEL_CONTROL_ENABLE_PCRADJUST;
 			mod->InPacketsSum = 0;
@@ -1080,9 +1091,11 @@ int ddbridge_mod_do_ioctl(struct file *file, unsigned int cmd, void *parg)
 	{
 		struct dvb_mod_params *mp = parg;
 
+		pr_info("set base freq\n");
 		if (mp->base_frequency != dev->mod_base.frequency)
 			if (set_base_frequency(dev, mp->base_frequency))
 				return -EINVAL;
+		pr_info("set attenuator\n");
 		mod_set_attenuator(dev, mp->attenuator);
 		break;
 	}
@@ -1092,6 +1105,7 @@ int ddbridge_mod_do_ioctl(struct file *file, unsigned int cmd, void *parg)
 		int res;
 		u32 ri;
 
+		pr_info("set modulation\n");
 		res = mod_set_modulation(dev, output->nr, cp->modulation);
 		if (res)
 			return res;
@@ -1101,6 +1115,8 @@ int ddbridge_mod_do_ioctl(struct file *file, unsigned int cmd, void *parg)
 		dev->mod[output->nr].ibitrate = cp->input_bitrate;
 		dev->mod[output->nr].pcr_correction = cp->pcr_correction;
 
+		pr_info("ibitrate %llu\n", dev->mod[output->nr].ibitrate);
+		pr_info("obitrate %llu\n", dev->mod[output->nr].obitrate);
 		if (cp->input_bitrate != 0) {
 			u64 d = dev->mod[output->nr].obitrate -
 				dev->mod[output->nr].ibitrate;

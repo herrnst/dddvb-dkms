@@ -443,6 +443,8 @@ int main(int argc, char **argv)
 		type = 3;
 	if (ddbid.device == 0x03)
 		type = 0;
+	if (ddbid.device == 0x07)
+		type = 4;
 	
 	if (!SectorSize)
 		return 0;
@@ -500,6 +502,10 @@ int main(int argc, char **argv)
 		case 3:
 			fname="DVBBridgeV1A_DVBBridgeV1A.bit";
 			printf("Octopus 35\n");
+			break;
+		case 4:
+			fname="DVBBridgeV2A_DD01_0007_MXL.bit";
+			printf("Octopus 4/8\n");
 			break;
 		}
 		//fname="DVBNetPCIeV1A_DVBNetPCIeV1A.bit";

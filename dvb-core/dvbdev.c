@@ -69,7 +69,7 @@ static int dvb_device_open(struct inode *inode, struct file *file)
 {
 	struct dvb_device *dvbdev;
 
-	//mutex_lock(&dvbdev_mutex);
+	mutex_lock(&dvbdev_mutex);
 	down_read(&minor_rwsem);
 	dvbdev = dvb_minors[iminor(inode)];
 
@@ -92,12 +92,12 @@ static int dvb_device_open(struct inode *inode, struct file *file)
 		}
 		fops_put(old_fops);
 		up_read(&minor_rwsem);
-		//mutex_unlock(&dvbdev_mutex);
+		mutex_unlock(&dvbdev_mutex);
 		return err;
 	}
 fail:
 	up_read(&minor_rwsem);
-	//mutex_unlock(&dvbdev_mutex);
+	mutex_unlock(&dvbdev_mutex);
 	return -ENODEV;
 }
 
@@ -419,6 +419,7 @@ int dvb_usercopy(struct file *file,
 	}
 
 	/* call driver */
+	/* this lock is much too coarse */
 	//mutex_lock(&dvbdev_mutex);
 	if ((err = func(file, cmd, parg)) == -ENOIOCTLCMD)
 		err = -ENOTTY;

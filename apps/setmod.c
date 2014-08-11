@@ -20,12 +20,12 @@ int main()
 
 	fd = open("/dev/dvb/adapter1/mod0", O_RDONLY);
 
-	mp.base_frequency = 730000000;
+	mp.base_frequency = 722000000;
 	mp.attenuator = 0;
 	ioctl(fd, DVB_MOD_SET, &mp);
 
 	mc.modulation = QAM_256;
-	mc.input_bitrate = 30000000ULL << 32;
+	mc.input_bitrate = 40000000ULL << 32;
 	mc.pcr_correction = 0;
 	ioctl(fd, DVB_MOD_CHANNEL_SET, &mc);
 	close(fd);

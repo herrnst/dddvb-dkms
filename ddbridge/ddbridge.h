@@ -92,6 +92,7 @@
 #include "stv0910.h"
 #include "stv6111.h"
 #include "lnbh25.h"
+#include "mxl5xx.h"
 
 #define DDB_MAX_I2C     4
 #define DDB_MAX_PORT   10
@@ -136,6 +137,7 @@ struct ddb_info {
 #define DDB_OCTOPUS_CI   2
 #define DDB_MOD          3
 #define DDB_OCTONET      4
+#define DDB_OCTOPUS_MAX  5
 	char *name;
 	u8    port_num;
 	u8    i2c_num;
@@ -145,6 +147,7 @@ struct ddb_info {
 	u8    temp_bus;
 	u8    board_control;
 	u8    ns_num;
+	u8    mdio_num;
 	struct ddb_regmap *regmap;
 };
 
@@ -202,8 +205,12 @@ struct ddb_dvb {
 	struct dmx_frontend    hw_frontend;
 	struct dmx_frontend    mem_frontend;
 	int                    users;
-	int (*gate_ctrl)(struct dvb_frontend *, int);
-	int                    attached;
+	u32                    attached;
+	u8                     input;
+
+	int (*i2c_gate_ctrl)(struct dvb_frontend *, int);
+	int (*set_voltage)(struct dvb_frontend* fe, fe_sec_voltage_t voltage);
+	int (*set_input)(struct dvb_frontend *fe);
 };
 
 struct ddb_ci {
@@ -245,18 +252,20 @@ struct ddb_port {
 #define DDB_PORT_TUNER          2
 #define DDB_PORT_LOOP           3
 #define DDB_PORT_MOD            4
-	char                  *name;
-	u32                    type;
-#define DDB_TUNER_NONE          0
-#define DDB_TUNER_DVBS_ST       1
-#define DDB_TUNER_DVBS_ST_AA    2
-#define DDB_TUNER_DVBCT_TR      3
-#define DDB_TUNER_DVBCT_ST      4
-#define DDB_CI_INTERNAL         5
-#define DDB_CI_EXTERNAL_SONY    6
-#define DDB_TUNER_DVBCT2_SONY_P 7
+	char                   *name;
+	u32                     type;
+#define DDB_TUNER_NONE           0
+#define DDB_TUNER_DVBS_ST        1
+#define DDB_TUNER_DVBS_ST_AA     2
+#define DDB_TUNER_DVBCT_TR       3
+#define DDB_TUNER_DVBCT_ST       4
+#define DDB_CI_INTERNAL          5
+#define DDB_CI_EXTERNAL_SONY     6
+#define DDB_TUNER_DVBCT2_SONY_P  7
 #define DDB_TUNER_DVBC2T2_SONY_P 8
-#define DDB_TUNER_ISDBT_SONY_P  9
+#define DDB_TUNER_ISDBT_SONY_P   9
+#define DDB_TUNER_DVBS_STV0910_P 10
+#define DDB_TUNER_MXL5XX         11
 
 #define DDB_TUNER_XO2           16
 #define DDB_TUNER_DVBS_STV0910  16
@@ -266,7 +275,7 @@ struct ddb_port {
 #define DDB_TUNER_ATSC_ST       20
 #define DDB_TUNER_DVBC2T2_ST    21
 
-	u32                    adr;
+	/*u32                    adr;*/
 	struct ddb_input      *input[2];
 	struct ddb_output     *output;
 	struct dvb_ca_en50221 *en;
@@ -320,7 +329,7 @@ struct mod_state {
 #define CM_STARTUP 1
 #define CM_ADJUST  2
 
-#define TS_CAPTURE_LEN  (21*188)
+#define TS_CAPTURE_LEN  (4096)
 
 /* net streaming hardware block */
 
@@ -381,6 +390,8 @@ struct ddb {
 	struct mod_state       mod[10];
 
 	struct mutex           octonet_i2c_lock;
+	struct mutex           lnb_lock;
+	u32                    lnb_tone;
 };
 
 
@@ -483,6 +494,6 @@ void ddbridge_mod_rate_handler(unsigned long data);
 
 int ddbridge_flashread(struct ddb *dev, u8 *buf, u32 addr, u32 len);
 
-#define DDBRIDGE_VERSION "0.9.14"
+#define DDBRIDGE_VERSION "0.9.15"
 
 #endif

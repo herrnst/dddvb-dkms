@@ -1737,7 +1737,7 @@ static int dtv_property_process_set(struct dvb_frontend *fe,
 	case DTV_CLEAR:
 		/*
 		 * Reset a cache of data specific to the frontend here. This does
-		 * not effect hardware.
+		 * not affect hardware.
 		 */
 		dvb_frontend_clear_cache(fe);
 		break;
@@ -1882,6 +1882,12 @@ static int dtv_property_process_set(struct dvb_frontend *fe,
 		c->lna = tvp->u.data;
 		if (fe->ops.set_lna)
 			r = fe->ops.set_lna(fe);
+		break;
+
+	case DTV_INPUT:
+		c->input = tvp->u.data;
+		if (fe->ops.set_input)
+			r = fe->ops.set_input(fe);
 		break;
 
 	default:

@@ -1,3 +1,9 @@
+0.9.14b 2014.04.24
+- fix fe read lockup in cxd2843
+
+0.9.14a 2014.04.23
+- fix Cine S2 V7 PCIe ID
+
 0.9.14 2014.04.20
 - support for CineCT V7 with C2
 - initial support for STV0910/STV6111/LNBH25

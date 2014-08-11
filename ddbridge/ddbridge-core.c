@@ -926,9 +926,9 @@ static int locked_gate_ctrl(struct dvb_frontend *fe, int enable)
 
 	if (enable) {
 		mutex_lock(&port->i2c_gate_lock);
-		status = dvb->gate_ctrl(fe, 1);
+		status = dvb->i2c_gate_ctrl(fe, 1);
 	} else {
-		status = dvb->gate_ctrl(fe, 0);
+		status = dvb->i2c_gate_ctrl(fe, 0);
 		mutex_unlock(&port->i2c_gate_lock);
 	}
 	return status;
@@ -949,7 +949,7 @@ static int demod_attach_drxk(struct ddb_input *input)
 		return -ENODEV;
 	}
 	fe->sec_priv = input;
-	dvb->gate_ctrl = fe->ops.i2c_gate_ctrl;
+	dvb->i2c_gate_ctrl = fe->ops.i2c_gate_ctrl;
 	fe->ops.i2c_gate_ctrl = locked_gate_ctrl;
 	return 0;
 }
@@ -989,7 +989,7 @@ static int demod_attach_stv0367(struct ddb_input *input)
 		return -ENODEV;
 	}
 	fe->sec_priv = input;
-	dvb->gate_ctrl = fe->ops.i2c_gate_ctrl;
+	dvb->i2c_gate_ctrl = fe->ops.i2c_gate_ctrl;
 	fe->ops.i2c_gate_ctrl = locked_gate_ctrl;
 	return 0;
 }
@@ -1032,7 +1032,7 @@ static int demod_attach_cxd2843(struct ddb_input *input, int par)
 		return -ENODEV;
 	}
 	fe->sec_priv = input;
-	dvb->gate_ctrl = fe->ops.i2c_gate_ctrl;
+	dvb->i2c_gate_ctrl = fe->ops.i2c_gate_ctrl;
 	fe->ops.i2c_gate_ctrl = locked_gate_ctrl;
 	return 0;
 }
@@ -1062,7 +1062,7 @@ static int demod_attach_stv0367dd(struct ddb_input *input)
 		return -ENODEV;
 	}
 	fe->sec_priv = input;
-	dvb->gate_ctrl = fe->ops.i2c_gate_ctrl;
+	dvb->i2c_gate_ctrl = fe->ops.i2c_gate_ctrl;
 	fe->ops.i2c_gate_ctrl = locked_gate_ctrl;
 	return 0;
 }
@@ -1250,7 +1250,6 @@ static struct stv0910_cfg stv0910 = {
 static int demod_attach_stv0910(struct ddb_input *input, int type)
 {
 	struct i2c_adapter *i2c = &input->port->i2c->adap;
-
 	struct ddb_dvb *dvb = &input->port->dvb[input->nr & 1];
 
 	dvb->fe = dvb_attach(stv0910_attach, i2c, &stv0910, (input->nr & 1));
@@ -1278,6 +1277,141 @@ static int tuner_attach_stv6111(struct ddb_input *input)
 		pr_err("No STV6111 found!\n");
 		return -ENODEV;
 	}
+	return 0;
+}
+
+static struct mxl5xx_cfg mxl5xx = {
+	.adr      = 0x60,
+	.type     = 0x01,
+	.clk      = 27000000,
+	.cap      = 12,
+};
+
+static int lnb_command(struct ddb *dev, u32 lnb, u32 cmd)
+{
+	u32 c, v = 0;
+
+	v = LNB_TONE & (dev->lnb_tone << (15 - lnb));
+	pr_info("lnb_control[%u] = %08x\n", lnb, cmd | v);
+	ddbwritel(dev, cmd | v, LNB_CONTROL(lnb));
+	for (c = 0; c < 10; c++) {
+		v = ddbreadl(dev, LNB_CONTROL(lnb));
+		pr_info("ctrl = %08x\n", v);
+		if ((v & LNB_BUSY) == 0)
+			break;
+		msleep(20);
+	}
+	return 0;
+}
+
+static int dd_send_master_cmd(struct dvb_frontend *fe,
+			      struct dvb_diseqc_master_cmd *cmd)
+{
+	struct ddb_input *input = fe->sec_priv;
+	struct ddb_port *port = input->port;
+	struct ddb *dev = port->dev;
+	struct ddb_dvb *dvb = &port->dvb[input->nr & 1];
+	int i;
+
+	mutex_lock(&dev->lnb_lock);
+	ddbwritel(dev, 0, LNB_BUF_LEVEL(dvb->input));
+	for (i = 0; i < cmd->msg_len; i++)
+		ddbwritel(dev, cmd->msg[i], LNB_BUF_WRITE(dvb->input));
+	lnb_command(dev, dvb->input, LNB_CMD_DISEQC);
+	mutex_unlock(&dev->lnb_lock);
+	return 0;
+}
+
+static int dd_set_tone(struct dvb_frontend *fe, fe_sec_tone_mode_t tone)
+{
+	struct ddb_input *input = fe->sec_priv;
+	struct ddb_port *port = input->port;
+	struct ddb *dev = port->dev;
+	struct ddb_dvb *dvb = &port->dvb[input->nr & 1];
+	int s = 0;
+
+	mutex_lock(&dev->lnb_lock);
+	switch (tone) {
+	case SEC_TONE_OFF:
+		dev->lnb_tone &= ~(1ULL << dvb->input);
+		break;
+	case SEC_TONE_ON:
+		dev->lnb_tone |= (1ULL << dvb->input);
+		break;
+	default:
+		s = -EINVAL;
+		break;
+	};
+	if (!s)
+		s = lnb_command(dev, dvb->input, LNB_CMD_NOP);
+	mutex_unlock(&dev->lnb_lock);
+	return 0;
+}
+
+static int dd_enable_high_lnb_voltage(struct dvb_frontend *fe, long arg)
+{
+
+	return 0;
+}
+
+static int dd_set_voltage(struct dvb_frontend *fe, fe_sec_voltage_t voltage)
+{
+	struct ddb_input *input = fe->sec_priv;
+	struct ddb_port *port = input->port;
+	struct ddb *dev = port->dev;
+	struct ddb_dvb *dvb = &port->dvb[input->nr & 1];
+	int s = 0;
+
+	mutex_lock(&dev->lnb_lock);
+	switch (voltage) {
+	case SEC_VOLTAGE_OFF:
+		lnb_command(dev, dvb->input, LNB_CMD_OFF);
+		break;
+	case SEC_VOLTAGE_13:
+		lnb_command(dev, dvb->input, LNB_CMD_LOW);
+		break;
+	case SEC_VOLTAGE_18:
+		lnb_command(dev, dvb->input, LNB_CMD_HIGH);
+		break;
+	default:
+		s = -EINVAL;
+		break;
+	};
+	mutex_unlock(&dev->lnb_lock);
+	return s;
+}
+
+static int dd_set_input(struct dvb_frontend *fe)
+{
+	
+	return 0;
+}
+
+static int fe_attach_mxl5xx(struct ddb_input *input)
+{
+	struct ddb *dev = input->port->dev;
+	struct i2c_adapter *i2c = &dev->i2c[0].adap;
+	struct ddb_dvb *dvb = &input->port->dvb[input->nr & 1];
+	int demod, tuner;
+
+	demod = input->nr;
+	tuner = demod & 3;
+	dvb->fe = dvb_attach(mxl5xx_attach, i2c, &mxl5xx,
+			     demod, tuner);
+	if (!dvb->fe) {
+		pr_err("No MXL5XX found!\n");
+		return -ENODEV;
+	}
+	if (input->nr < 4) 
+		lnb_command(dev, input->nr, LNB_CMD_INIT);
+	dvb->fe->ops.set_voltage = dd_set_voltage;
+	dvb->fe->ops.enable_high_lnb_voltage = dd_enable_high_lnb_voltage;
+	dvb->fe->ops.set_tone = dd_set_tone;
+	dvb->fe->ops.diseqc_send_master_cmd = dd_send_master_cmd;
+	dvb->fe->sec_priv = input;
+	dvb->set_input = dvb->fe->ops.set_input;
+	dvb->fe->ops.set_input = dd_set_input;
+	dvb->input = tuner;
 	return 0;
 }
 
@@ -1546,6 +1680,9 @@ static int dvb_input_attach(struct ddb_input *input)
 	}
 	dvb->fe = dvb->fe2 = 0;
 	switch (port->type) {
+	case DDB_TUNER_MXL5XX:
+		fe_attach_mxl5xx(input);
+		break;
 	case DDB_TUNER_DVBS_ST:
 		if (demod_attach_stv0900(input, 0) < 0)
 			return -ENODEV;
@@ -1553,6 +1690,7 @@ static int dvb_input_attach(struct ddb_input *input)
 			return -ENODEV;
 		break;
 	case DDB_TUNER_DVBS_STV0910:
+	case DDB_TUNER_DVBS_STV0910_P:
 		if (demod_attach_stv0910(input, 0) < 0)
 			return -ENODEV;
 		if (tuner_attach_stv6111(input) < 0)
@@ -1622,7 +1760,6 @@ static int port_has_encti(struct ddb_port *port)
 
 	if (!ret)
 		pr_info("[0x20]=0x%02x\n", val);
-
 	return ret ? 0 : 1;
 }
 
@@ -1672,10 +1809,9 @@ static int port_has_stv0900(struct ddb_port *port)
 	return 1;
 }
 
-static int port_has_stv0900_aa(struct ddb_port *port)
+static int port_has_stv0900_aa(struct ddb_port *port, u8 *id)
 {
-	u8 val;
-	if (i2c_read_reg16(&port->i2c->adap, 0x68, 0xf100, &val) < 0)
+	if (i2c_read_reg16(&port->i2c->adap, 0x68, 0xf100, id) < 0)
 		return 0;
 	return 1;
 }
@@ -1807,6 +1943,15 @@ static void ddb_port_probe(struct ddb_port *port)
 		return;
 	}
 
+	if (dev->info->type == DDB_OCTOPUS_MAX) {
+		port->name = "DUAL DVB-S2 MX";
+		port->class = DDB_PORT_TUNER;
+		port->type = DDB_TUNER_MXL5XX;
+		if (port->i2c)
+			ddbwritel(dev, I2C_SPEED_400, port->i2c->regs + I2C_TIMING);
+		return;
+	}
+
 	if (port->nr > 1 && dev->info->type == DDB_OCTOPUS_CI) {
 		port->name = "CI internal";
 		port->class = DDB_PORT_CI;
@@ -1858,10 +2003,14 @@ static void ddb_port_probe(struct ddb_port *port)
 		port->class = DDB_PORT_TUNER;
 		port->type = DDB_TUNER_DVBS_ST;
 		ddbwritel(dev, I2C_SPEED_100, port->i2c->regs + I2C_TIMING);
-	} else if (port_has_stv0900_aa(port)) {
+	} else if (port_has_stv0900_aa(port, &id)) {
 		port->name = "DUAL DVB-S2";
 		port->class = DDB_PORT_TUNER;
 		port->type = DDB_TUNER_DVBS_ST_AA;
+		if (id == 0x51)
+			port->type = DDB_TUNER_DVBS_STV0910_P;
+		else
+			port->type = DDB_TUNER_DVBS_ST_AA;
 		ddbwritel(dev, I2C_SPEED_100, port->i2c->regs + I2C_TIMING);
 	} else if (port_has_drxks(port)) {
 		port->name = "DUAL DVB-C/T";
@@ -2414,7 +2563,8 @@ static void ddb_ports_init(struct ddb *dev)
 		port = &dev->port[i];
 		port->dev = dev;
 		port->nr = i;
-		port->i2c = &dev->i2c[i];
+		if (dev->info->i2c_num > i)
+			port->i2c = &dev->i2c[i];
 		port->gap = 4;
 		port->obr = ci_bitrate;
 		mutex_init(&port->i2c_gate_lock);
@@ -2436,6 +2586,10 @@ static void ddb_ports_init(struct ddb *dev)
 				ddb_input_init(port, 2 * i + 1, 1, 2 * i + 1);
 			}
 			ddb_output_init(port, i, i + 8);
+		}
+		if (dev->info->type == DDB_OCTOPUS_MAX) {
+			ddb_input_init(port, 2 * i, 0, 2 * i);
+			ddb_input_init(port, 2 * i + 1, 1, 2 * i + 1);
 		}
 		if (dev->info->type == DDB_MOD) {
 			ddb_output_init(port, i, i);
@@ -3015,6 +3169,8 @@ static long ddb_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	{
 		struct ddb_mdio mdio;
 
+		if (!dev->info->mdio_num)
+			return -EIO;
 		if (copy_from_user(&mdio, parg, sizeof(mdio)))
 			return -EFAULT;
 		mdio.val = mdio_read(dev, mdio.adr, mdio.reg);
@@ -3026,6 +3182,8 @@ static long ddb_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	{
 		struct ddb_mdio mdio;
 
+		if (!dev->info->mdio_num)
+			return -EIO;
 		if (copy_from_user(&mdio, parg, sizeof(mdio)))
 			return -EFAULT;
 		mdio_write(dev, mdio.adr, mdio.reg, mdio.val);

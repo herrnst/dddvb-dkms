@@ -1,7 +1,7 @@
 /*
  * ddbridge-regs.h: Digital Devices PCIe bridge driver
  *
- * Copyright (C) 2010-2013 Digital Devices GmbH
+ * Copyright (C) 2010-2014 Digital Devices GmbH
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -146,6 +146,7 @@
 #define I2C_TASKMEM_BASE    (0x1000)    /* Byte offset */
 #define I2C_TASKMEM_SIZE    (0x0800)
 
+#define I2C_SPEED_666   (0x02010202)
 #define I2C_SPEED_400   (0x04030404)
 #define I2C_SPEED_200   (0x09080909)
 #define I2C_SPEED_154   (0x0C0B0C0C)
@@ -193,6 +194,30 @@
 
 #define DMA_BASE_ADDRESS_TABLE  (0x2000)
 #define DMA_BASE_ADDRESS_TABLE_ENTRIES (512)
+
+
+/* ------------------------------------------------------------------------- */
+
+#define LNB_BASE                     (0x400)
+#define LNB_CONTROL(i)               (LNB_BASE + (i) * 0x20 + 0x00)
+#define LNB_CMD   (7ULL <<  0)
+#define LNB_CMD_NOP    0
+#define LNB_CMD_INIT   1
+#define LNB_CMD_STATUS 2
+#define LNB_CMD_LOW    3
+#define LNB_CMD_HIGH   4
+#define LNB_CMD_OFF    5
+#define LNB_CMD_DISEQC 6
+#define LNB_CMD_UNI    7
+
+#define LNB_BUSY  (1ULL <<  4)
+#define LNB_TONE  (1ULL << 15)
+
+#define LNB_STATUS(i)                (LNB_BASE + (i) * 0x20 + 0x04)
+#define LNB_VOLTAGE(i)               (LNB_BASE + (i) * 0x20 + 0x08)
+#define LNB_CONFIG(i)                (LNB_BASE + (i) * 0x20 + 0x0c)
+#define LNB_BUF_LEVEL(i)             (LNB_BASE + (i) * 0x20 + 0x10)
+#define LNB_BUF_WRITE(i)             (LNB_BASE + (i) * 0x20 + 0x14)
 
 /* ------------------------------------------------------------------------- */
 /* CI Interface (only CI-Bridge) */

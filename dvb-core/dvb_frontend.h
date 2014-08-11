@@ -304,6 +304,7 @@ struct dvb_frontend_ops {
 	int (*i2c_gate_ctrl)(struct dvb_frontend* fe, int enable);
 	int (*ts_bus_ctrl)(struct dvb_frontend* fe, int acquire);
 	int (*set_lna)(struct dvb_frontend *);
+	int (*set_input)(struct dvb_frontend *fe);
 
 	/* These callbacks are for devices that implement their own
 	 * tuning algorithms, rather than a simple swzigzag
@@ -393,7 +394,8 @@ struct dtv_frontend_properties {
 	u8			atscmh_sccc_code_mode_d;
 
 	u32			lna;
-
+	s32                     input;
+	
 	/* statistics data */
 	struct dtv_fe_stats	strength;
 	struct dtv_fe_stats	cnr;
