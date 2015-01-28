@@ -34,11 +34,40 @@ MODULE_PARM_DESC(adapter_alloc,
 
 #include "ddbridge-core.c"
 
+static struct ddb_regset octopus_i2c = {
+	.base = 0x80,
+	.num  = 0x04,
+	.size = 0x20,
+};
+
+static struct ddb_regset octopus_i2c_buf = {
+	.base = 0x1000,
+	.num  = 0x04,
+	.size = 0x200,
+};
+
+static struct ddb_regmap octopus_net_map = {
+	.i2c = &octopus_i2c,
+	.i2c_buf = &octopus_i2c_buf,
+};
+
+static struct ddb_regset octopus_gtl = {
+	.base = 0x180,
+	.num  = 0x01,
+	.size = 0x20,
+};
+
+static struct ddb_regmap octopus_net_gtl = {
+	.i2c = &octopus_i2c,
+	.i2c_buf = &octopus_i2c_buf,
+	.gtl = &octopus_gtl,
+};
+
 static struct ddb_info ddb_octonet = {
 	.type     = DDB_OCTONET,
 	.name     = "Digital Devices OctopusNet network DVB adapter",
+	.regmap   = &octopus_net_map,
 	.port_num = 4,
-	.i2c_num  = 4,
 	.ns_num   = 12,
 	.mdio_num = 1,
 };
@@ -46,20 +75,44 @@ static struct ddb_info ddb_octonet = {
 static struct ddb_info ddb_octonet_jse = {
 	.type     = DDB_OCTONET,
 	.name     = "Digital Devices OctopusNet network DVB adapter JSE",
+	.regmap   = &octopus_net_map,
 	.port_num = 4,
-	.i2c_num  = 4,
 	.ns_num   = 15,
 	.mdio_num = 1,
 };
 
+static struct ddb_regset octopus_gtl_i2c = {
+	.base = 0x80000080,
+	.num  = 0x01,
+	.size = 0x20,
+};
+
+static struct ddb_regset octopus_gtl_i2c_buf = {
+	.base = 0x80001000,
+	.num  = 0x04,
+	.size = 0x200,
+};
+
+static struct ddb_regmap octopus_net_gtlmap = {
+	.i2c = &octopus_gtl_i2c,
+	.i2c_buf = &octopus_gtl_i2c_buf,
+	.gtl = &octopus_gtl,
+};
+
 static struct ddb_info ddb_octonet_ser = {
 	.type     = DDB_OCTONET,
-	.name     = "Digital Devices OctopusNet",
+	.name     = "Digital Devices OctopusNet GTL",
+	.regmap   = &octopus_net_gtl,
+	.regmap_gtl = &octopus_net_gtlmap,
+	.port_num = 1,
+	.ns_num   = 12,
+	.mdio_num = 1,
 };
 
 static struct ddb_info ddb_octonet_tbd = {
 	.type     = DDB_OCTONET,
 	.name     = "Digital Devices OctopusNet",
+	.regmap   = &octopus_net_map,
 };
 
 static void octonet_unmap(struct ddb *dev)
@@ -94,6 +147,7 @@ static int __init octonet_probe(struct platform_device *pdev)
 {
 	struct ddb *dev;
 	struct resource *regs;
+	int irq;
 	int i;
 
 	dev = vzalloc(sizeof(struct ddb));
@@ -145,7 +199,11 @@ static int __init octonet_probe(struct platform_device *pdev)
 		ddbwritel(dev, 0x00, TS_OUTPUT_CONTROL(i));
 	usleep_range(5000, 6000);
 
-	if (request_irq(platform_get_irq(dev->pfdev, 0), irq_handler,
+	irq = platform_get_irq(dev->pfdev, 0);
+	if (irq < 0)
+		goto fail;
+	
+	if (request_irq(irq, irq_handler,
 			IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
 			"octonet-dvb", (void *) dev) < 0)
 		goto fail;
@@ -154,33 +212,26 @@ static int __init octonet_probe(struct platform_device *pdev)
 	ddbwritel(dev, 0x1, ETHER_CONTROL);
 	ddbwritel(dev, 14 + (vlan ? 4 : 0), ETHER_LENGTH);
 
+	if (ddb_init(dev) == 0)
+		return 0;
 
-	if (ddb_i2c_init(dev) < 0)
-		goto fail1;
-
-	ddb_ports_init(dev);
-	if (ddb_ports_attach(dev) < 0)
-		goto fail3;
-
-	ddb_nsd_attach(dev);
-
-	ddb_device_create(dev);
-
-	return 0;
-
-fail3:
-	ddb_ports_detach(dev);
-	dev_err(dev->dev, "fail3\n");
-fail1:
-	dev_err(dev->dev, "fail1\n");
 fail:
 	dev_err(dev->dev, "fail\n");
 	ddbwritel(dev, 0, ETHER_CONTROL);
 	ddbwritel(dev, 0, INTERRUPT_ENABLE);
 	octonet_unmap(dev);
 	platform_set_drvdata(pdev, 0);
-	return 0;
+	return -1;
 }
+
+#ifdef CONFIG_OF
+static const struct of_device_id octonet_dt_ids[] = {
+	{ .compatible = "digitaldevices,octonet-dvb" },
+	{ /* sentinel */ }
+};
+
+MODULE_DEVICE_TABLE(of, octonet_dt_ids);
+#endif
 
 static struct platform_driver octonet_driver = {
 	.remove	= __exit_p(octonet_remove),
@@ -188,6 +239,9 @@ static struct platform_driver octonet_driver = {
 	.driver		= {
 		.name	= "octonet-dvb",
 		.owner	= THIS_MODULE,
+#ifdef CONFIG_OF
+		.of_match_table = of_match_ptr(octonet_dt_ids),
+#endif
 	},
 };
 

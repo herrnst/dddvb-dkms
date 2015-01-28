@@ -79,12 +79,12 @@ struct ddflash {
 	int fd;
 	struct ddb_id id;
 	uint32_t type;
+	uint32_t version;
 
 	uint32_t sector_size;
 	uint32_t size;
 
 	uint32_t bufsize;
-	uint32_t offset;
 	uint32_t block_erase;
 
 	uint8_t * buffer;
@@ -150,14 +150,14 @@ void dump(const uint8_t *b, int l)
 	}
 }
 
-static int flashwrite_SSTI(struct ddflash *ddf, int fs, uint32_t FlashOffset, uint32_t maxlen)
+static int flashwrite_SSTI(struct ddflash *ddf, int fs, uint32_t FlashOffset, uint32_t maxlen, uint32_t fw_off)
 {
     int err = 0;
     uint8_t cmd[6];
     int i, j;
     uint32_t flen, blen;
 
-    blen = flen = lseek(fs, 0, SEEK_END);
+    blen = flen = lseek(fs, 0, SEEK_END) - fw_off;
     if (blen % 0xfff)
 	    blen = (blen + 0xfff) & 0xfffff000; 
     printf("blen = %u, flen = %u\n", blen, flen);
@@ -205,7 +205,7 @@ static int flashwrite_SSTI(struct ddflash *ddf, int fs, uint32_t FlashOffset, ui
 		    uint32_t len = 4096; 
 		    ssize_t rlen;
 		    
-		    if (lseek(fs, j, SEEK_SET) < 0) {
+		    if (lseek(fs, j + fw_off, SEEK_SET) < 0) {
 			    printf("seek error\n");
 			    return -1;
 		    }
@@ -278,25 +278,29 @@ static int flashwrite_SSTI(struct ddflash *ddf, int fs, uint32_t FlashOffset, ui
 }
 
 
-static int flashwrite(struct ddflash *ddf, int fs, uint32_t addr, uint32_t maxlen)
+static int flashwrite(struct ddflash *ddf, int fs, uint32_t addr, uint32_t maxlen, uint32_t fw_off)
 {
-	flashwrite_SSTI(ddf, fs, addr, maxlen);
+	flashwrite_SSTI(ddf, fs, addr, maxlen, fw_off);
 }
 
-static int flashcmp(struct ddflash *ddf, int fs, uint32_t addr, uint32_t maxlen)
+static int flashcmp(struct ddflash *ddf, int fs, uint32_t addr, uint32_t maxlen, uint32_t fw_off)
 {
+	off_t off;
 	uint32_t len;
 	int i, j, rlen;
 	uint8_t buf[256], buf2[256];
 	int bl = sizeof(buf);
 	
-	len = lseek(fs, 0, SEEK_END);
-	lseek(fs, 0, SEEK_SET);
+	off = lseek(fs, 0, SEEK_END);
+	if (off < 0)
+		return -1;
+	len = off - fw_off;
+	lseek(fs, fw_off, SEEK_SET);
 	if (len > maxlen) {
 		printf("file too big\n");
 		return -1;
 	}
-	//printf("flash file len %u, compare to %08x in flash\n", len, addr);
+	printf("flash file len %u, compare to %08x in flash\n", len, addr);
 	for (j = 0; j < len; j += bl, addr += bl) {
 		if (len - j < bl)
 			bl = len - j;
@@ -314,7 +318,7 @@ static int flashcmp(struct ddflash *ddf, int fs, uint32_t addr, uint32_t maxlen)
 			return addr;
 		}
 	}
-	//printf("flash same as file\n");
+	printf("flash same as file\n");
 	return 0;
 }
 
@@ -526,7 +530,7 @@ static int get_id(struct ddflash *ddf) {
 
 	if (ioctl(ddf->fd, IOCTL_DDB_ID, &ddf->id) < 0)
 		return -1;
-#if 0
+#if 1
 	printf("%04x %04x %04x %04x %08x %08x\n",
 	       ddf->id.vendor, ddf->id.device,
 	       ddf->id.subvendor, ddf->id.subdevice,
@@ -548,21 +552,111 @@ static int get_id(struct ddflash *ddf) {
 	return 0;
 }
 
+static int check_fw(struct ddflash *ddf, char *fn, uint32_t *fw_off)
+{
+	int fd, fsize, ret = 0;
+	off_t off;
+	uint32_t p, i;
+	uint8_t *buf;
+	uint8_t hdr[256];
+	unsigned int devid, version, length;
+	unsigned int cid[8];
+	int cids = 0;
+	uint32_t maxlen = 1024 * 1024;
+	
+	fd = open(fn, O_RDONLY);
+	if (fd < 0)
+		return fd;
+	off = lseek(fd, 0, SEEK_END);
+	if (off < 0)
+		return -1;
+	fsize = off;
+	if (fsize > maxlen) {
+		close(fd);
+		return -1;
+	}
+	lseek(fd, 0, SEEK_SET);	
+	buf = malloc(fsize);
+	if (!buf)
+		return -1;
+	read(fd, buf, fsize);
+	close(fd);
+	
+	for (p = 0; p < fsize && buf[p]; p++) {
+		char *key = &buf[p], *val = NULL;
+
+		for (; p < fsize && buf[p] != 0x0a; p++) {
+			if (buf[p] == ':') {
+				buf[p] = 0;
+				val = &buf[p + 1];
+			}
+		}
+		if (val == NULL || p == fsize)
+			break;
+		buf[p] = 0;
+		//printf("%-20s:%s\n", key, val);
+		if (!strcasecmp(key, "Devid")) {
+			sscanf(val, "%x", &devid);
+		} else if (!strcasecmp(key, "Compat")) {
+			cids = sscanf(val, "%x,%x,%x,%x,%x,%x,%x,%x",
+				      &cid[0], &cid[1], &cid[2], &cid[3],
+				      &cid[4], &cid[5], &cid[6], &cid[7]);
+			if (cids < 1)
+				break;
+			for (i = 0; i < cids; i++) 
+				if (cid[i] == ddf->id.device)
+					break;
+			if (i == cids) {
+				ret = -2; /* no compatible ID */
+				goto out;
+			}
+		} else if (!strcasecmp(key, "Version")) {
+			sscanf(val, "%x", &version);
+		} else if (!strcasecmp(key, "Length")) {
+			sscanf(val, "%u", &length);
+		} 
+	}
+	p++;
+	*fw_off = p;
+	
+	//printf("devid = %04x\n", devid);
+	//printf("version = %08x  %08x\n", version, ddf->id.hw);
+	//printf("length = %u\n", length);
+	//printf("fsize = %u, p = %u, f-p = %u\n", fsize, p, fsize - p);
+	if (devid == ddf->id.device && version <= ddf->id.hw)
+		ret = -3; /* same id but no newer version */
+	
+out:
+	free(buf);
+	printf("check_fw = %d\n", ret);
+	return ret;
+	
+}
+
 static int update_image(struct ddflash *ddf, char *fn, 
-			uint32_t adr, uint32_t len)
+			uint32_t adr, uint32_t len,
+			int has_header)
 {
 	int fs, res;
+	uint32_t fw_off = 0;
 
+	if (has_header) {
+		int ck;
+		
+		ck = check_fw(ddf, fn, &fw_off);
+		if (ck < 0)
+			return -2;
+	}
+	
 	fs = open(fn, O_RDONLY);
 	if (fs < 0 ) {
 		printf("File %s not found \n", fn);
 		return -1;
 	}
-	res = flashcmp(ddf, fs, adr, len);
+	res = flashcmp(ddf, fs, adr, len, fw_off);
 	if (res <= 0) 
 		goto out;
-	if (res > 0)
-		res = flashwrite(ddf, fs, adr, len);
+	res = flashwrite(ddf, fs, adr, len, fw_off);
 	if (res == 0)
 		res = 1;
 out:
@@ -577,30 +671,29 @@ static int update_flash(struct ddflash *ddf)
 
 	switch (ddf->id.device) {
 	case 0x300:
-		//fname="/boot/DVBNetV1A_DD01_0300.bit";
-		fname="/boot/fpga.img";
+	case 0x301:
+	case 0x302:
+	case 0x307:
+		if ((res = update_image(ddf, "/boot/bs.img", 0x4000, 0x1000, 0)) == 1)
+			stat |= 4;
+		if ((res = update_image(ddf, "/boot/uboot.img", 0xb0000, 0xb0000, 0)) == 1)
+			stat |= 2;
+		if ((res = update_image(ddf, "/config/fpga.img", 0x10000, 0xa0000, 1)) == 1)
+			stat |= 1;
+		if (res == -1)
+			if ((res = update_image(ddf, "/boot/fpga.img", 0x10000, 0xa0000, 1)) == 1)
+				stat |= 1;
 		break;
 	case 0x320:
 		//fname="/boot/DVBNetV1A_DD01_0300.bit";
 		fname="/boot/fpga.img";
-		if ((res = update_image(ddf, fname, 0x10000, 0x100000)) == 1)
+		if ((res = update_image(ddf, fname, 0x10000, 0x100000, 1)) == 1)
 			stat |= 1;
 		return stat;
 		break;
-#if 0
-	case 0x301:
-		fname="/boot/DVBNetV1A_DD01_0301.bit";
-		break;
-#endif
 	default:
 		return 0;
 	}
-	if ((res = update_image(ddf, "/boot/bs.img", 0x4000, 0x1000)) == 1)
-		stat |= 4;
-	if ((res = update_image(ddf, "/boot/uboot.img", 0xb0000, 0xb0000)) == 1)
-		stat |= 2;
-	if ((res = update_image(ddf, fname, 0x10000, 0xa0000)) == 1)
-		stat |= 1;
 	return stat;
 }
 

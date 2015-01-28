@@ -144,7 +144,6 @@
 #define I2C_TASKADDRESS (0x0C)     /* High read, low write */
 #define I2C_MONITOR     (0x1C)
 
-#define I2C_BASE_N(i)   (I2C_BASE + (i) * 0x20)
 
 #define I2C_TASKMEM_BASE    (0x1000)    /* Byte offset */
 #define I2C_TASKMEM_SIZE    (0x0800)

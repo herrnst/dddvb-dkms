@@ -551,6 +551,15 @@ static int get_frontend(struct dvb_frontend *fe)
 	return 0;
 }
 
+static int set_input(struct dvb_frontend *fe, int input)
+{
+	struct mxl *state = fe->demodulator_priv;
+	struct dtv_frontend_properties *p = &fe->dtv_property_cache;
+
+	//state->tuner = p->input;
+	state->tuner = input;
+	return 0;
+}
 
 static struct dvb_frontend_ops mxl_ops = {
 	.delsys = { SYS_DVBS, SYS_DVBS2, SYS_DSS },
@@ -578,6 +587,7 @@ static struct dvb_frontend_ops mxl_ops = {
 	.read_signal_strength		= read_signal_strength,
 	.read_ucblocks			= read_ucblocks,
 	.get_frontend                   = get_frontend,
+	.set_input                      = set_input,
 };
 
 static struct mxl_base *match_base(struct i2c_adapter  *i2c, u8 adr)

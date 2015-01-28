@@ -158,7 +158,7 @@ static int __devinit ddb_probe(struct pci_dev *pdev,
 
 #ifdef CONFIG_PCI_MSI
 	if (msi && pci_msi_enabled()) {
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 17, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0))
 		stat = pci_enable_msi_range(dev->pdev, 2, 2);
 #else
 		stat = pci_enable_msi_block(dev->pdev, 2);
@@ -220,41 +220,9 @@ static int __devinit ddb_probe(struct pci_dev *pdev,
 		ddbwritel(dev, 14 + (vlan ? 4 : 0), ETHER_LENGTH);
 	}
 
-	mutex_init(&dev->lnb_lock);
-	if (ddb_i2c_init(dev) < 0)
-		goto fail1;
-	ddb_ports_init(dev);
-	if (ddb_buffers_alloc(dev) < 0) {
-		pr_info(": Could not allocate buffer memory\n");
-		goto fail2;
-	}
-	if (ddb_ports_attach(dev) < 0)
-		goto fail3;
-
-	ddb_nsd_attach(dev);
-
-	/* ignore if this fails */
-	ddb_device_create(dev);
-
-	if (dev->info->fan_num)	{
-		ddbwritel(dev, 1, GPIO_DIRECTION);
-		ddbwritel(dev, 1, GPIO_OUTPUT);
-	}
-	if (dev->info->type == DDB_MOD)
-		ddbridge_mod_init(dev);
-
-	return 0;
-
-fail3:
-	ddb_ports_detach(dev);
-	pr_err("fail3\n");
-	ddb_ports_release(dev);
-fail2:
-	pr_err("fail2\n");
-	ddb_buffers_free(dev);
-	ddb_i2c_release(dev);
-fail1:
-	pr_err("fail1\n");
+	if (ddb_init(dev) == 0)
+		return 0;
+	
 	ddbwritel(dev, 0, INTERRUPT_ENABLE);
 	ddbwritel(dev, 0, MSI1_ENABLE);
 	free_irq(dev->pdev->irq, dev);
@@ -266,6 +234,7 @@ fail0:
 		pci_disable_msi(dev->pdev);
 fail:
 	pr_err("fail\n");
+
 	ddb_unmap(dev);
 	pci_set_drvdata(pdev, 0);
 	pci_disable_device(pdev);
@@ -276,19 +245,70 @@ fail:
 /****************************************************************************/
 /****************************************************************************/
 
-static struct ddb_regset octopus_i2c = {
+static struct ddb_regset octopus_i2c_4 = {
 	.base = 0x80,
 	.num  = 0x04,
 	.size = 0x20,
 };
 
-static struct ddb_regmap octopus_net_map = {
-	.i2c = &octopus_i2c,
+static struct ddb_regset octopus_i2c_3 = {
+	.base = 0x80,
+	.num  = 0x03,
+	.size = 0x20,
+};
+
+static struct ddb_regset octopus_i2c_2 = {
+	.base = 0x80,
+	.num  = 0x02,
+	.size = 0x20,
+};
+
+static struct ddb_regset octopus_i2c_1 = {
+	.base = 0x80,
+	.num  = 0x01,
+	.size = 0x20,
+};
+
+static struct ddb_regset octopus_i2c_buf = {
+	.base = 0x1000,
+	.num  = 0x04,
+	.size = 0x200,
 };
 
 static struct ddb_regmap octopus_map = {
-	.i2c = &octopus_i2c,
+	.i2c = &octopus_i2c_4,
+	.i2c_buf = &octopus_i2c_buf,
 };
+
+static struct ddb_regmap octopus_map_3 = {
+	.i2c = &octopus_i2c_3,
+	.i2c_buf = &octopus_i2c_buf,
+};
+
+static struct ddb_regmap octopus_map_2 = {
+	.i2c = &octopus_i2c_3,
+	.i2c_buf = &octopus_i2c_buf,
+};
+
+static struct ddb_regmap octopus_map_1 = {
+	.i2c = &octopus_i2c_1,
+	.i2c_buf = &octopus_i2c_buf,
+};
+
+static struct ddb_regmap octopus_net_map = {
+	.i2c = &octopus_i2c_4,
+	.i2c_buf = &octopus_i2c_buf,
+};
+
+static struct ddb_regmap octopus_mod_map = {
+};
+
+static struct ddb_regmap octopus_max_map = {
+	.i2c = &octopus_i2c_1,
+	.i2c_buf = &octopus_i2c_buf,
+};
+
+/****************************************************************************/
 
 static struct ddb_info ddb_none = {
 	.type     = DDB_NONE,
@@ -299,29 +319,29 @@ static struct ddb_info ddb_none = {
 static struct ddb_info ddb_octopus = {
 	.type     = DDB_OCTOPUS,
 	.name     = "Digital Devices Octopus DVB adapter",
+	.regmap   = &octopus_map,
 	.port_num = 4,
-	.i2c_num  = 4,
 };
 
 static struct ddb_info ddb_octopusv3 = {
 	.type     = DDB_OCTOPUS,
 	.name     = "Digital Devices Octopus V3 DVB adapter",
+	.regmap   = &octopus_map,
 	.port_num = 4,
-	.i2c_num  = 4,
 };
 
 static struct ddb_info ddb_octopus_le = {
 	.type     = DDB_OCTOPUS,
 	.name     = "Digital Devices Octopus LE DVB adapter",
+	.regmap   = &octopus_map_2,
 	.port_num = 2,
-	.i2c_num  = 2,
 };
 
 static struct ddb_info ddb_octopus_oem = {
 	.type     = DDB_OCTOPUS,
 	.name     = "Digital Devices Octopus OEM",
+	.regmap   = &octopus_map,
 	.port_num = 4,
-	.i2c_num  = 4,
 	.led_num  = 1,
 	.fan_num  = 1,
 	.temp_num = 1,
@@ -331,79 +351,90 @@ static struct ddb_info ddb_octopus_oem = {
 static struct ddb_info ddb_octopus_mini = {
 	.type     = DDB_OCTOPUS,
 	.name     = "Digital Devices Octopus Mini",
+	.regmap   = &octopus_map,
 	.port_num = 4,
-	.i2c_num  = 4,
 };
 
 static struct ddb_info ddb_v6 = {
 	.type     = DDB_OCTOPUS,
 	.name     = "Digital Devices Cine S2 V6 DVB adapter",
+	.regmap   = &octopus_map_3,
 	.port_num = 3,
-	.i2c_num  = 3,
 };
 
 static struct ddb_info ddb_v6_5 = {
 	.type     = DDB_OCTOPUS,
 	.name     = "Digital Devices Cine S2 V6.5 DVB adapter",
+	.regmap   = &octopus_map,
 	.port_num = 4,
-	.i2c_num  = 4,
 };
 
 static struct ddb_info ddb_v7 = {
 	.type     = DDB_OCTOPUS,
 	.name     = "Digital Devices Cine S2 V7 DVB adapter",
+	.regmap   = &octopus_map,
 	.port_num = 4,
-	.i2c_num  = 4,
 	.board_control = 2,
-};
-
-static struct ddb_info ddb_s2_48 = {
-	.type     = DDB_OCTOPUS_MAX,
-	.name     = "Digital Devices MAX S8 4/8",
-	.port_num = 4,
-	.i2c_num  = 1,
-	.board_control = 1,
 };
 
 static struct ddb_info ddb_ctv7 = {
 	.type     = DDB_OCTOPUS,
 	.name     = "Digital Devices Cine CT V7 DVB adapter",
+	.regmap   = &octopus_map,
 	.port_num = 4,
-	.i2c_num  = 4,
 	.board_control = 3,
 };
 
 static struct ddb_info ddb_satixS2v3 = {
 	.type     = DDB_OCTOPUS,
 	.name     = "Mystique SaTiX-S2 V3 DVB adapter",
+	.regmap   = &octopus_map_3,
 	.port_num = 3,
-	.i2c_num  = 3,
 };
 
 static struct ddb_info ddb_ci = {
 	.type     = DDB_OCTOPUS_CI,
 	.name     = "Digital Devices Octopus CI",
+	.regmap   = &octopus_map_2,
 	.port_num = 4,
-	.i2c_num  = 2,
 };
 
 static struct ddb_info ddb_cis = {
 	.type     = DDB_OCTOPUS_CI,
 	.name     = "Digital Devices Octopus CI single",
+	.regmap   = &octopus_map_2,
 	.port_num = 3,
-	.i2c_num  = 2,
+};
+
+static struct ddb_info ddb_ci_s2_pro = {
+	.type     = DDB_OCTOPUS_CI,
+	.name     = "Digital Devices Octopus CI S2 Pro",
+	.regmap   = &octopus_map_1,
+	.port_num = 4,
+	.board_control = 3,
 };
 
 static struct ddb_info ddb_dvbct = {
 	.type     = DDB_OCTOPUS,
 	.name     = "Digital Devices DVBCT V6.1 DVB adapter",
+	.regmap   = &octopus_map,
 	.port_num = 3,
-	.i2c_num  = 3,
+};
+
+/****************************************************************************/
+
+static struct ddb_info ddb_s2_48 = {
+	.type     = DDB_OCTOPUS_MAX,
+	.name     = "Digital Devices MAX S8 4/8",
+	.regmap   = &octopus_max_map,
+	.port_num = 4,
+	.board_control = 1,
 };
 
 static struct ddb_info ddb_mod = {
 	.type     = DDB_MOD,
 	.name     = "Digital Devices DVB-C modulator",
+	.regmap   = &octopus_mod_map,
 	.port_num = 10,
 	.temp_num = 1,
 };
@@ -411,12 +442,15 @@ static struct ddb_info ddb_mod = {
 static struct ddb_info ddb_octopus_net = {
 	.type     = DDB_OCTONET,
 	.name     = "Digital Devices OctopusNet network DVB adapter",
+	.regmap   = &octopus_net_map,
 	.port_num = 4,
-	.i2c_num  = 4,
 	.ns_num   = 12,
 	.mdio_num = 1,
-	.regmap   = &octopus_net_map,
 };
+
+/****************************************************************************/
+/****************************************************************************/
+/****************************************************************************/
 
 #define DDVID 0xdd01 /* Digital Devices Vendor ID */
 
@@ -443,6 +477,7 @@ static const struct pci_device_id ddb_id_tbl[] __devinitconst = {
 	DDB_ID(DDVID, 0x0007, DDVID, 0x0023, ddb_s2_48),
 	DDB_ID(DDVID, 0x0011, DDVID, 0x0040, ddb_ci),
 	DDB_ID(DDVID, 0x0011, DDVID, 0x0041, ddb_cis),
+	DDB_ID(DDVID, 0x0013, DDVID, 0x0043, ddb_ci_s2_pro),
 	DDB_ID(DDVID, 0x0201, DDVID, 0x0001, ddb_mod),
 	DDB_ID(DDVID, 0x0320, PCI_ANY_ID, PCI_ANY_ID, ddb_octopus_net),
 	/* in case sub-ids got deleted in flash */

@@ -114,6 +114,7 @@ struct ddb_regmap {
 	struct ddb_regset *ci;
 	struct ddb_regset *pid_filter;
 	struct ddb_regset *ns;
+	struct ddb_regset *gtl;
 };
 
 struct ddb_ids {
@@ -138,7 +139,6 @@ struct ddb_info {
 #define DDB_OCTOPUS_MAX  5
 	char *name;
 	u8    port_num;
-	u8    i2c_num;
 	u8    led_num;
 	u8    fan_num;
 	u8    temp_num;
@@ -147,6 +147,7 @@ struct ddb_info {
 	u8    ns_num;
 	u8    mdio_num;
 	struct ddb_regmap *regmap;
+	struct ddb_regmap *regmap_gtl;
 };
 
 
@@ -205,10 +206,13 @@ struct ddb_dvb {
 	int                    users;
 	u32                    attached;
 	u8                     input;
+	
+	fe_sec_tone_mode_t     tone;
+	fe_sec_voltage_t       voltage;
 
 	int (*i2c_gate_ctrl)(struct dvb_frontend *, int);
 	int (*set_voltage)(struct dvb_frontend *fe, fe_sec_voltage_t voltage);
-	int (*set_input)(struct dvb_frontend *fe);
+	int (*set_input)(struct dvb_frontend *fe, int input);
 };
 
 struct ddb_ci {
@@ -282,6 +286,7 @@ struct ddb_port {
 	u32                    gap;
 	u32                    obr;
 	u8                     creg;
+	u8                     link;
 };
 
 struct mod_base {
@@ -344,6 +349,13 @@ struct ddb_ns {
 	u8                     p[512];
 };
 
+struct ddb_lnb {
+	struct mutex           lock;
+	u32                    tone;
+	u32                    voltage[4];
+	u32                    voltages;
+};
+
 struct ddb {
 	struct pci_dev        *pdev;
 	struct platform_device *pfdev;
@@ -355,7 +367,6 @@ struct ddb {
 	u32                    has_dma;
 	u32                    has_ns;
 
-	struct ddb_regmap      regmap;
 	unsigned char         *regs;
 	u32                    regs_len;
 	struct ddb_port        port[DDB_MAX_PORT];
@@ -367,6 +378,9 @@ struct ddb {
 
 	void                   (*handler[32])(unsigned long);
 	unsigned long          handler_data[32];
+
+	void                   (*gtl_handler[32])(unsigned long);
+	unsigned long          gtl_handler_data[32];
 
 	struct device         *ddb_dev;
 	u32                    ddb_dev_users;
@@ -387,8 +401,9 @@ struct ddb {
 	struct mod_base        mod_base;
 	struct mod_state       mod[10];
 
-	struct mutex           lnb_lock;
-	u32                    lnb_tone;
+	struct ddb_lnb         lnb[4];
+
+	spinlock_t             gtl_lock;
 };
 
 
@@ -396,34 +411,139 @@ struct ddb {
 
 static inline void ddbwriteb(struct ddb *dev, u32 val, u32 adr)
 {
-	writeb(val, (char *) (dev->regs+(adr)));
-}
-
-static inline void ddbwritel(struct ddb *dev, u32 val, u32 adr)
-{
-	writel(val, (char *) (dev->regs+(adr)));
-}
-
-static inline void ddbwritew(struct ddb *dev, u16 val, u32 adr)
-{
-	writew(val, (char *) (dev->regs+(adr)));
-}
-
-static inline u32 ddbreadl(struct ddb *dev, u32 adr)
-{
-	return readl((char *) (dev->regs+(adr)));
+	writeb(val, (char *) (dev->regs + (adr)));
 }
 
 static inline u32 ddbreadb(struct ddb *dev, u32 adr)
 {
-	return readb((char *) (dev->regs+(adr)));
+	return readb((char *) (dev->regs + (adr)));
 }
+
+static inline void ddbwritel(struct ddb *dev, u32 val, u32 adr);
+
+static inline u32 ddbreadl(struct ddb *dev, u32 adr)
+{
+	if (unlikely(adr & 0x80000000)) {
+		unsigned long flags;
+		u32 val;
+		
+		spin_lock_irqsave(&dev->gtl_lock, flags);
+		while (1 & ddbreadl(dev, 0x194));
+		writel(adr & 0xfffc, (char *) (dev->regs + (0x194)));
+		writel(3, (char *) (dev->regs + (0x190)));
+		val = readl((char *) (dev->regs + (0x19c)));
+		spin_unlock_irqrestore(&dev->gtl_lock, flags);
+		return val;
+	}
+	return readl((char *) (dev->regs + (adr)));
+}
+
+static inline void ddbwritel(struct ddb *dev, u32 val, u32 adr)
+{
+	if (unlikely(adr & 0x80000000)) {
+		unsigned long flags;
+		
+		spin_lock_irqsave(&dev->gtl_lock, flags);
+		while (1 & ddbreadl(dev, 0x194));
+		ddbwritel(dev, adr & 0xfffc, 0x194);
+		ddbwritel(dev, val, 0x198);
+		ddbwritel(dev, 1, 0x190);
+		spin_unlock_irqrestore(&dev->gtl_lock, flags);
+		return;
+	}
+	writel(val, (char *) (dev->regs + (adr)));
+}
+
+static void gtlcpyto(struct ddb *dev, u32 adr, const u8 *buf,
+		     unsigned int count)
+{
+	u32 val = 0, p = adr;
+	u32 aa = p & 3;
+
+	if (aa) {
+		while (p & 3 && count) {
+			val >>= 8;
+			val |= *buf << 24;
+			p++;
+			buf++;
+			count--;
+		}
+		ddbwritel(dev, adr, val);
+	}
+	while (count >= 4) {
+		val = buf[0] | (buf[1] << 8) | (buf[2] << 16) | (buf[3] << 24);
+		ddbwritel(dev, p, val);
+		p += 4;
+		buf += 4;
+		count -= 4;
+	}
+	if (count) {
+		val = buf[0];
+		if (count > 1)
+			val |= buf[1] << 8;
+		if (count > 2)
+			val |= buf[2] << 16;
+		ddbwritel(dev, p, val);
+	}
+}
+
+static void gtlcpyfrom(struct ddb *dev, u8 *buf, u32 adr, long count)
+{
+	u32 val = 0, p = adr;
+	u32 a = p & 3;
+
+	if (a) {
+		val = ddbreadl(dev, p) >> (8 * a);
+		while (p & 3 && count) {
+			*buf = val;
+			val >>= 8;
+			p++;
+			buf++;
+			count--;
+		}
+	}
+	while (count >= 4) {
+		val = ddbreadl(dev, p);
+		buf[0] = val & 0xff;
+		buf[1] = (val >> 8) & 0xff;
+		buf[2] = (val >> 16) & 0xff;
+		buf[3] = (val >> 24) & 0xff;
+		p += 4;
+		buf += 4;
+		count -= 4;
+	}
+	if (count) {
+		val = ddbreadl(dev, p);
+		buf[0] = val & 0xff;
+		if (count > 1)
+			buf[1] = (val >> 8) & 0xff;
+		if (count > 2)
+			buf[2] = (val >> 16) & 0xff;
+	}
+}
+
+static void ddbcpyto(struct ddb *dev, u32 adr, void *src, long count)
+{
+	if (unlikely(adr & 0x80000000))
+		return gtlcpyto(dev, adr, src, count);
+	return memcpy_toio((char *) (dev->regs + adr), src, count);
+}
+
+static void ddbcpyfrom(struct ddb *dev, void *dst, u32 adr, long count)
+{
+	if (unlikely(adr & 0x80000000))
+		return gtlcpyfrom(dev, dst, adr, count);
+	return memcpy_fromio(dst, (char *) (dev->regs + adr), count);
+}
+
+#if 0
 
 #define ddbcpyto(_dev, _adr, _src, _count) \
 	memcpy_toio((char *) (_dev->regs + (_adr)), (_src), (_count))
 
 #define ddbcpyfrom(_dev, _dst, _adr, _count) \
 	memcpy_fromio((_dst), (char *) (_dev->regs + (_adr)), (_count))
+#endif
 
 #define ddbmemset(_dev, _adr, _val, _count) \
 	memset_io((char *) (_dev->regs + (_adr)), (_val), (_count))

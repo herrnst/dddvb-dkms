@@ -137,7 +137,8 @@ static int ddb_i2c_master_xfer(struct i2c_adapter *adapter,
 	struct ddb_i2c *i2c = (struct ddb_i2c *) i2c_get_adapdata(adapter);
 	struct ddb *dev = i2c->dev;
 	u8 addr = 0;
-
+	u32 i2c_buf = dev->info->regmap->i2c_buf->base;
+	
 	if (num)
 		addr = msg[0].addr;
 	if (msg[0].len > I2C_BUF_SIZE)
@@ -146,15 +147,14 @@ static int ddb_i2c_master_xfer(struct i2c_adapter *adapter,
 	    !(msg[0].flags & I2C_M_RD)) {
 		if (msg[1].len > I2C_BUF_SIZE)
 			return -EIO;
-		memcpy_toio(dev->regs + I2C_TASKMEM_BASE + i2c->wbuf,
-			    msg[0].buf, msg[0].len);
-		ddbwritel(dev, msg[0].len|(msg[1].len << 16),
+		ddbcpyto(dev, I2C_TASKMEM_BASE + i2c->wbuf,
+			 msg[0].buf, msg[0].len);
+		ddbwritel(dev, msg[0].len | (msg[1].len << 16),
 			  i2c->regs + I2C_TASKLENGTH);
 		if (!ddb_i2c_cmd(i2c, addr, 1)) {
-			memcpy_fromio(msg[1].buf,
-				      dev->regs + I2C_TASKMEM_BASE +
-				      i2c->rbuf,
-				      msg[1].len);
+			ddbcpyfrom(dev, msg[1].buf,
+				   I2C_TASKMEM_BASE + i2c->rbuf,
+				   msg[1].len);
 			return num;
 		}
 	}
@@ -192,7 +192,9 @@ static void ddb_i2c_release(struct ddb *dev)
 	struct ddb_i2c *i2c;
 	struct i2c_adapter *adap;
 
-	for (i = 0; i < dev->info->i2c_num; i++) {
+	if (!dev->info->regmap->i2c)
+		return;
+	for (i = 0; i < dev->info->regmap->i2c->num; i++) {
 		i2c = &dev->i2c[i];
 		adap = &i2c->adap;
 		i2c_del_adapter(adap);
@@ -206,44 +208,52 @@ static void i2c_handler(unsigned long priv)
 	complete(&i2c->completion);
 }
 
+static int ddb_i2c_add(struct ddb *dev, struct ddb_i2c *i2c,
+		       struct ddb_regmap *regmap, int i)
+{
+	struct i2c_adapter *adap;
+	
+	i2c->nr = i;
+	i2c->dev = dev;
+	i2c->wbuf = i * regmap->i2c_buf->size;
+	i2c->rbuf = i2c->wbuf + regmap->i2c_buf->size / 2;
+	i2c->regs = regmap->i2c->base + regmap->i2c->size * i;
+	ddbwritel(dev, I2C_SPEED_100, i2c->regs + I2C_TIMING);
+	ddbwritel(dev, (i2c->rbuf << 16) | i2c->wbuf,
+		  i2c->regs + I2C_TASKADDRESS);
+	init_completion(&i2c->completion);
+	
+	adap = &i2c->adap;
+	i2c_set_adapdata(adap, i2c);
+#ifdef I2C_ADAP_CLASS_TV_DIGITAL
+	adap->class = I2C_ADAP_CLASS_TV_DIGITAL|I2C_CLASS_TV_ANALOG;
+#else
+#ifdef I2C_CLASS_TV_ANALOG
+	adap->class = I2C_CLASS_TV_ANALOG;
+#endif
+#endif
+	strcpy(adap->name, "ddbridge");
+	adap->algo = &ddb_i2c_algo;
+	adap->algo_data = (void *)i2c;
+	adap->dev.parent = dev->dev;
+	return i2c_add_adapter(adap);
+}
+
 static int ddb_i2c_init(struct ddb *dev)
 {
 	int i, j, stat = 0;
 	struct ddb_i2c *i2c;
 	struct i2c_adapter *adap;
-
-	for (i = 0; i < dev->info->i2c_num; i++) {
+	struct ddb_regmap *regmap = dev->info->regmap;
+	
+	
+	if (!regmap->i2c)
+		return 0;
+	for (i = 0; i < regmap->i2c->num; i++) {
 		i2c = &dev->i2c[i];
-		dev->handler[i] = i2c_handler;
 		dev->handler_data[i] = (unsigned long) i2c;
-		i2c->dev = dev;
-		i2c->nr = i;
-		i2c->wbuf = i * (I2C_BUF_SIZE * 2);
-		i2c->rbuf = i2c->wbuf + I2C_BUF_SIZE;
-		if (dev->info->regmap && dev->info->regmap->i2c)
-			i2c->regs = dev->info->regmap->i2c->base +
-				dev->info->regmap->i2c->size * i;
-		else
-			i2c->regs = I2C_BASE + i * 0x20;
-		ddbwritel(dev, I2C_SPEED_100, i2c->regs + I2C_TIMING);
-		ddbwritel(dev, (i2c->rbuf << 16) | i2c->wbuf,
-			  i2c->regs + I2C_TASKADDRESS);
-		init_completion(&i2c->completion);
-
-		adap = &i2c->adap;
-		i2c_set_adapdata(adap, i2c);
-#ifdef I2C_ADAP_CLASS_TV_DIGITAL
-		adap->class = I2C_ADAP_CLASS_TV_DIGITAL|I2C_CLASS_TV_ANALOG;
-#else
-#ifdef I2C_CLASS_TV_ANALOG
-		adap->class = I2C_CLASS_TV_ANALOG;
-#endif
-#endif
-		strcpy(adap->name, "ddbridge");
-		adap->algo = &ddb_i2c_algo;
-		adap->algo_data = (void *)i2c;
-		adap->dev.parent = dev->dev;
-		stat = i2c_add_adapter(adap);
+		dev->handler[i] = i2c_handler;
+		stat = ddb_i2c_add(dev, i2c, regmap, i);
 		if (stat)
 			break;
 	}

@@ -1889,7 +1889,7 @@ static int dtv_property_process_set(struct dvb_frontend *fe,
 	case DTV_INPUT:
 		c->input = tvp->u.data;
 		if (fe->ops.set_input)
-			r = fe->ops.set_input(fe);
+			r = fe->ops.set_input(fe, c->input);
 		break;
 
 	default:
