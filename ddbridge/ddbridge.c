@@ -66,7 +66,7 @@ static void __devexit ddb_remove(struct pci_dev *pdev)
 	ddb_ports_detach(dev);
 	ddb_i2c_release(dev);
 
-	if (dev->info->ns_num)
+	if (dev->link[0].info->ns_num)
 		ddbwritel(dev, 0, ETHER_CONTROL);
 	ddbwritel(dev, 0, INTERRUPT_ENABLE);
 	ddbwritel(dev, 0, MSI1_ENABLE);
@@ -116,12 +116,14 @@ static int __devinit ddb_probe(struct pci_dev *pdev,
 	dev->ids.subvendor = id->subvendor;
 	dev->ids.subdevice = id->subdevice;
 
-	dev->info = (struct ddb_info *) id->driver_data;
-	pr_info("DDBridge driver detected: %s\n", dev->info->name);
+	dev->link[0].dev = dev;
+	dev->link[0].info = (struct ddb_info *) id->driver_data;
+	pr_info("DDBridge driver detected: %s\n", dev->link[0].info->name);
 
 	dev->regs_len = pci_resource_len(dev->pdev, 0);
 	dev->regs = ioremap(pci_resource_start(dev->pdev, 0),
 			    pci_resource_len(dev->pdev, 0));
+
 	if (!dev->regs) {
 		pr_err("DDBridge: not enough memory for register map\n");
 		stat = -ENOMEM;
@@ -139,7 +141,7 @@ static int __devinit ddb_probe(struct pci_dev *pdev,
 	pr_info("HW %08x REGMAP %08x\n",
 		dev->ids.hwid, dev->ids.regmapid);
 
-	if (dev->info->ns_num) {
+	if (dev->link[0].info->ns_num) {
 		int i;
 
 		ddbwritel(dev, 0, ETHER_CONTROL);
@@ -158,23 +160,30 @@ static int __devinit ddb_probe(struct pci_dev *pdev,
 
 #ifdef CONFIG_PCI_MSI
 	if (msi && pci_msi_enabled()) {
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0))
-		stat = pci_enable_msi_range(dev->pdev, 2, 2);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 15, 0))
+		stat = pci_enable_msi_range(dev->pdev, 1, 2);
+		if (stat >= 1) {
+			dev->msi = stat;
+			pr_info("DDBridge using %d MSI interrupt(s)\n", dev->msi);
+			irq_flag = 0;
+		} else
+			pr_info("DDBridge: MSI not available.\n");
+
 #else
 		stat = pci_enable_msi_block(dev->pdev, 2);
-#endif
 		if (stat == 0) {
 			dev->msi = 1;
-			pr_info("DDBrige using 2 MSI interrupts\n");
+			pr_info("DDBridge using 2 MSI interrupts\n");
 		}
 		if (stat == 1)
 			stat = pci_enable_msi(dev->pdev);
 		if (stat < 0) {
-			pr_info(": MSI not available.\n");
+			pr_info("DDBridge: MSI not available.\n");
 		} else {
 			irq_flag = 0;
 			dev->msi++;
 		}
+#endif
 	}
 	if (dev->msi == 2) {
 		stat = request_irq(dev->pdev->irq, irq_handler0,
@@ -202,9 +211,8 @@ static int __devinit ddb_probe(struct pci_dev *pdev,
 		if (stat < 0)
 			goto fail0;
 	}
-	pr_info("IRQ %08x\n", dev->pdev->irq);
 	ddbwritel(dev, 0, DMA_BASE_READ);
-	if (dev->info->type != DDB_MOD)
+	if (dev->link[0].info->type != DDB_MOD)
 		ddbwritel(dev, 0, DMA_BASE_WRITE);
 
 	/*ddbwritel(dev, 0xffffffff, INTERRUPT_ACK);*/
@@ -215,11 +223,6 @@ static int __devinit ddb_probe(struct pci_dev *pdev,
 		ddbwritel(dev, 0x0fffff0f, INTERRUPT_ENABLE);
 		ddbwritel(dev, 0x00000000, MSI1_ENABLE);
 	}
-	if (dev->info->ns_num) {
-		ddbwritel(dev, 1, ETHER_CONTROL);
-		ddbwritel(dev, 14 + (vlan ? 4 : 0), ETHER_LENGTH);
-	}
-
 	if (ddb_init(dev) == 0)
 		return 0;
 	
@@ -274,6 +277,9 @@ static struct ddb_regset octopus_i2c_buf = {
 	.num  = 0x04,
 	.size = 0x200,
 };
+
+/****************************************************************************/
+
 
 static struct ddb_regmap octopus_map = {
 	.i2c = &octopus_i2c_4,
@@ -402,7 +408,7 @@ static struct ddb_info ddb_ci = {
 static struct ddb_info ddb_cis = {
 	.type     = DDB_OCTOPUS_CI,
 	.name     = "Digital Devices Octopus CI single",
-	.regmap   = &octopus_map_2,
+	.regmap   = &octopus_map_1,
 	.port_num = 3,
 };
 

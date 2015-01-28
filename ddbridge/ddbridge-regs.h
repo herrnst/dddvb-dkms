@@ -145,10 +145,6 @@
 #define I2C_MONITOR     (0x1C)
 
 
-#define I2C_TASKMEM_BASE    (0x1000)    /* Byte offset */
-#define I2C_TASKMEM_SIZE    (0x0800)
-#define I2C_BUF_SIZE    (I2C_TASKMEM_SIZE / 8)
-
 #define I2C_SPEED_666   (0x02010202)
 #define I2C_SPEED_400   (0x04030404)
 #define I2C_SPEED_200   (0x09080909)
@@ -177,9 +173,6 @@
 #define DMA_DIAG_WAITOVERFLOWCOUNTER    (0x38)
 #define DMA_DIAG_WAITCOUNTER            (0x3C)
 
-/* ------------------------------------------------------------------------- */
-/* DMA  Buffer */
-
 #define TS_INPUT_BASE       (0x200)
 #define TS_INPUT_CONTROL(i)         (TS_INPUT_BASE + (i) * 0x10 + 0x00)
 #define TS_INPUT_CONTROL2(i)        (TS_INPUT_BASE + (i) * 0x10 + 0x04)
@@ -187,6 +180,9 @@
 #define TS_OUTPUT_BASE       (0x280)
 #define TS_OUTPUT_CONTROL(i)        (TS_OUTPUT_BASE + (i) * 0x10 + 0x00)
 #define TS_OUTPUT_CONTROL2(i)       (TS_OUTPUT_BASE + (i) * 0x10 + 0x04)
+
+/* ------------------------------------------------------------------------- */
+/* DMA  Buffer */
 
 #define DMA_BUFFER_BASE     (0x300)
 

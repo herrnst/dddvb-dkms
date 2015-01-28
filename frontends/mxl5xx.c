@@ -63,6 +63,7 @@ struct mxl_base {
 	struct i2c_adapter  *i2c;
 	u32                  count;
 	u32                  type;
+	u32                  chipversion;
 	u32                  clock;
 
 	struct mutex         i2c_lock;
@@ -148,16 +149,10 @@ static int send_command(struct mxl *state, u32 size, u8 *buf)
 static int write_register(struct mxl *state, u32 reg, u32 val)
 {
 	int stat;
-	u8 data[] = {
+	u8 data[MXL_HYDRA_REG_WRITE_LEN] = {
 		MXL_HYDRA_PLID_REG_WRITE, 0x08,
 		BYTE0(reg), BYTE1(reg), BYTE2(reg), BYTE3(reg),
 		BYTE0(val), BYTE1(val), BYTE2(val), BYTE3(val),
-#if 0
-		GET_BYTE(reg, 0), GET_BYTE(reg, 1),
-		GET_BYTE(reg, 2), GET_BYTE(reg, 3),
-		GET_BYTE(val, 0), GET_BYTE(val, 1),
-		GET_BYTE(val, 2), GET_BYTE(val, 3),
-#endif
 	};
 	mutex_lock(&state->base->i2c_lock);
 	stat = i2cwrite(state, data, sizeof(data));
@@ -304,24 +299,17 @@ static void extract_from_mnemonic(u32 regAddr, u8 lsbPos, u8 width,
 
 static int firmware_is_alive(struct mxl *state)
 {
-	u32 hb0 = 0, hb1 = 0;
-	int alive = 0;
-	unsigned long timeout;
+	int status;
+	u32 hb0, hb1;
 
-	timeout = jiffies + (7 * HZ) / 10;
-	do {
-		read_register(state, HYDRA_HEAR_BEAT, &hb0);
-		msleep(20);
-		read_register(state, HYDRA_HEAR_BEAT, &hb1);
-		if (hb0 && hb1) {
-			if ((hb1 - hb0) == 0)
-				alive = 0;
-			else
-				alive = 1;
-		}
-	} while (time_before(jiffies, timeout));
-
-	return alive;
+	if (read_register(state, HYDRA_HEAR_BEAT, &hb0))
+		return 0;
+	msleep(20);
+	if (read_register(state, HYDRA_HEAR_BEAT, &hb1))
+		return 0;
+	if (hb1 == hb0)
+		return 0;
+	return 1;
 }
 
 static int init(struct dvb_frontend *fe)
@@ -360,6 +348,25 @@ static int cfg_scrambler(struct mxl *state)
 	return send_command(state, sizeof(buf), buf);
 }
 
+static int CfgDemodAbortTune(struct mxl *state)
+{
+	MXL_HYDRA_DEMOD_ABORT_TUNE_T abortTuneCmd;
+	u8 cmdSize = sizeof(abortTuneCmd);
+	u8 cmdBuff[MXL_HYDRA_OEM_MAX_CMD_BUFF_LEN];
+	
+	abortTuneCmd.demodId = state->demod;
+	BUILD_HYDRA_CMD(MXL_HYDRA_ABORT_TUNE_CMD, MXL_CMD_WRITE, cmdSize, &abortTuneCmd, cmdBuff);
+	return send_command(state, cmdSize + MXL_HYDRA_CMD_HEADER_SIZE, &cmdBuff[0]);
+}
+
+static int send_master_cmd(struct dvb_frontend *fe,
+			   struct dvb_diseqc_master_cmd *cmd)
+{
+	struct mxl *state = fe->demodulator_priv;
+
+	return CfgDemodAbortTune(state);
+}
+
 static int set_parameters(struct dvb_frontend *fe)
 {
 	int status = 0;
@@ -369,6 +376,7 @@ static int set_parameters(struct dvb_frontend *fe)
 	u8 cmdSize = sizeof(demodChanCfg);
 	u8 cmdBuff[MXL_HYDRA_OEM_MAX_CMD_BUFF_LEN];
 	MXL_HYDRA_DEMOD_ID_E demodId = state->demod;
+#if 0
 	MXL_REG_FIELD_T xpt_enable_dss_input[MXL_HYDRA_DEMOD_MAX] = {
 		{XPT_INP_MODE_DSS0}, {XPT_INP_MODE_DSS1},
 		{XPT_INP_MODE_DSS2}, {XPT_INP_MODE_DSS3},
@@ -379,41 +387,50 @@ static int set_parameters(struct dvb_frontend *fe)
 		{XPT_ENABLE_INPUT2}, {XPT_ENABLE_INPUT3},
 		{XPT_ENABLE_INPUT4}, {XPT_ENABLE_INPUT5},
 		{XPT_ENABLE_INPUT6}, {XPT_ENABLE_INPUT7} };
+#endif
 
+	
+	CfgDemodAbortTune(state);
+	
 	switch (p->delivery_system) {
 	case SYS_DSS:
 		demodChanCfg.standard = MXL_HYDRA_DSS;
 		break;
 	case SYS_DVBS:
+		demodChanCfg.standard = MXL_HYDRA_DVBS;
 		demodChanCfg.rollOff = MXL_HYDRA_ROLLOFF_AUTO;
 		demodChanCfg.modulationScheme = MXL_HYDRA_MOD_QPSK;
-		demodChanCfg.standard = MXL_HYDRA_DVBS;
 		break;
 	case SYS_DVBS2:
+		demodChanCfg.standard = MXL_HYDRA_DVBS2;
 		demodChanCfg.rollOff = MXL_HYDRA_ROLLOFF_AUTO;
 		demodChanCfg.modulationScheme = MXL_HYDRA_MOD_AUTO;
-		demodChanCfg.standard = MXL_HYDRA_DVBS2;
 		demodChanCfg.pilots = MXL_HYDRA_PILOTS_AUTO;
-		cfg_scrambler(state);
+		//cfg_scrambler(state);
 		break;
 	default:
 		return -EINVAL;
 	}
 
+	
+#if 0
 	update_by_mnemonic(state,
 			   xpt_enable_dvb_input[demodId].regAddr,
 			   xpt_enable_dvb_input[demodId].lsbPos,
 			   xpt_enable_dvb_input[demodId].numOfBits,
 			   MXL_TRUE);
-
+#endif
 	demodChanCfg.tunerIndex = state->tuner;
 	demodChanCfg.demodIndex = state->demod;
 	demodChanCfg.frequencyInHz = p->frequency * 1000;
 	demodChanCfg.symbolRateInHz = p->symbol_rate;
-	demodChanCfg.maxCarrierOffsetInMHz = 5;
-	demodChanCfg.spectrumInversion = MXL_HYDRA_SPECTRUM_NON_INVERTED;
+	demodChanCfg.maxCarrierOffsetInMHz = 10;
+	demodChanCfg.spectrumInversion = MXL_HYDRA_SPECTRUM_AUTO;
 	demodChanCfg.fecCodeRate = MXL_HYDRA_FEC_AUTO;
 
+	printk("std %u freq %u\n", demodChanCfg.standard, demodChanCfg.symbolRateInHz);
+
+#if 0
 	if (p->delivery_system == SYS_DSS)
 		update_by_mnemonic(state,
 				   xpt_enable_dss_input[demodId].regAddr,
@@ -426,10 +443,11 @@ static int set_parameters(struct dvb_frontend *fe)
 				   xpt_enable_dss_input[demodId].lsbPos,
 				   xpt_enable_dss_input[demodId].numOfBits,
 				   MXL_FALSE);
-
+#endif
+	
 	BUILD_HYDRA_CMD(MXL_HYDRA_DEMOD_SET_PARAM_CMD, MXL_CMD_WRITE,
 			cmdSize, &demodChanCfg, cmdBuff);
-	status = send_command(state, cmdSize, &cmdBuff[0]);
+	status = send_command(state, cmdSize + MXL_HYDRA_CMD_HEADER_SIZE, &cmdBuff[0]);
 
 	return status;
 }
@@ -442,9 +460,11 @@ static int read_status(struct dvb_frontend *fe, fe_status_t *status)
 	u32 regData = 0;
 
 	mutex_lock(&state->base->status_lock);
+	HYDRA_DEMOD_STATUS_LOCK(state, state->demod);
 	stat = read_register(state, (HYDRA_DMD_LOCK_STATUS_ADDR_OFFSET +
 				     HYDRA_DMD_STATUS_OFFSET(state->demod)),
 			     &regData);
+	HYDRA_DEMOD_STATUS_UNLOCK(state, state->demod);
 	mutex_unlock(&state->base->status_lock);
 
 	*status = (regData == 1) ? 0x1f : 0;
@@ -474,6 +494,7 @@ static int tune(struct dvb_frontend *fe, bool re_tune,
 	if (r)
 		return r;
 
+#if 0
 	if (*status & FE_HAS_LOCK)
 		return 0;
 
@@ -482,6 +503,7 @@ static int tune(struct dvb_frontend *fe, bool re_tune,
 	else
 		p->delivery_system = SYS_DVBS;
 	set_parameters(fe);
+#endif
 
 	return 0;
 }
@@ -498,9 +520,11 @@ static int read_snr(struct dvb_frontend *fe, u16 *snr)
 	u32 regData = 0;
 
 	mutex_lock(&state->base->status_lock);
+	HYDRA_DEMOD_STATUS_LOCK(state, state->demod);
 	stat = read_register(state, (HYDRA_DMD_SNR_ADDR_OFFSET +
 				     HYDRA_DMD_STATUS_OFFSET(state->demod)),
 			     &regData);
+	HYDRA_DEMOD_STATUS_UNLOCK(state, state->demod);
 	mutex_unlock(&state->base->status_lock);
 	*snr = (s16) (regData & 0xFFFF);
 	return stat;
@@ -520,9 +544,11 @@ static int read_signal_strength(struct dvb_frontend *fe, u16 *strength)
 	u32 regData = 0;
 
 	mutex_lock(&state->base->status_lock);
+	HYDRA_DEMOD_STATUS_LOCK(state, state->demod);
 	stat = read_register(state, (HYDRA_DMD_STATUS_INPUT_POWER_ADDR +
 				     HYDRA_DMD_STATUS_OFFSET(state->demod)),
 			     &regData);
+	HYDRA_DEMOD_STATUS_UNLOCK(state, state->demod);
 	mutex_unlock(&state->base->status_lock);
 	*strength = (u16) (regData & 0xFFFF);
 	return stat;
@@ -535,7 +561,7 @@ static int read_ucblocks(struct dvb_frontend *fe, u32 *ucblocks)
 
 static int get_frontend(struct dvb_frontend *fe)
 {
-	struct mxl *state = fe->demodulator_priv;
+	//struct mxl *state = fe->demodulator_priv;
 	struct dtv_frontend_properties *p = &fe->dtv_property_cache;
 
 	switch (p->delivery_system) {
@@ -554,7 +580,7 @@ static int get_frontend(struct dvb_frontend *fe)
 static int set_input(struct dvb_frontend *fe, int input)
 {
 	struct mxl *state = fe->demodulator_priv;
-	struct dtv_frontend_properties *p = &fe->dtv_property_cache;
+	//struct dtv_frontend_properties *p = &fe->dtv_property_cache;
 
 	//state->tuner = p->input;
 	state->tuner = input;
@@ -563,6 +589,7 @@ static int set_input(struct dvb_frontend *fe, int input)
 
 static struct dvb_frontend_ops mxl_ops = {
 	.delsys = { SYS_DVBS, SYS_DVBS2, SYS_DSS },
+	.xbar   = { 4, 0, 8 },
 	.info = {
 		.name			= "MXL5XX",
 		.frequency_min		= 950000,
@@ -588,6 +615,7 @@ static struct dvb_frontend_ops mxl_ops = {
 	.read_ucblocks			= read_ucblocks,
 	.get_frontend                   = get_frontend,
 	.set_input                      = set_input,
+	.diseqc_send_master_cmd		= send_master_cmd,
 };
 
 static struct mxl_base *match_base(struct i2c_adapter  *i2c, u8 adr)
@@ -617,13 +645,13 @@ static u32 get_big_endian(u8 numOfBits, const u8 buf[])
 
 	switch (numOfBits) {
 	case 24:
-		retValue = (((u32)buf[0]) << 16) |
-			(((u32)buf[1]) << 8) | buf[2];
+		retValue = (((u32) buf[0]) << 16) |
+			(((u32) buf[1]) << 8) | buf[2];
 		break;
 	case 32:
-		retValue = (((u32)buf[0]) << 24) |
-			(((u32)buf[1]) << 16) |
-			(((u32)buf[2]) << 8) | buf[3];
+		retValue = (((u32) buf[0]) << 24) |
+			(((u32) buf[1]) << 16) |
+			(((u32) buf[2]) << 8) | buf[3];
 		break;
 	default:
 		break;
@@ -688,13 +716,15 @@ static int do_firmware_download(struct mxl *state,
 	u32 segAddress = 0;
 	MBIN_FILE_T *mbinPtr  = (MBIN_FILE_T *)mbinBufferPtr;
 	MBIN_SEGMENT_T *segmentPtr;
-	u32 data;
 
 	if (mbinPtr->header.id != MBIN_FILE_HEADER_ID) {
 		pr_err("%s: Invalid file header ID (%c)\n",
 		       __func__, mbinPtr->header.id);
 		return -EINVAL;
 	}
+	status = write_register(state, FW_DL_SIGN_ADDR, 0);
+	if (status)
+		return status;
 	segmentPtr = (MBIN_SEGMENT_T *) (&mbinPtr->data[0]);
 	for (index = 0; index < mbinPtr->header.numSegments; index++) {
 		if (segmentPtr->header.id != MBIN_SEGMENT_HEADER_ID) {
@@ -703,10 +733,11 @@ static int do_firmware_download(struct mxl *state,
 			return -EINVAL;
 		}
 		segLength  = get_big_endian(24, &(segmentPtr->header.len24[0]));
-		segAddress =
-			get_big_endian(32, &(segmentPtr->header.address[0]));
-		status = write_fw_segment(state, segAddress,
-					  segLength, (u8 *) segmentPtr->data);
+		segAddress = get_big_endian(32, &(segmentPtr->header.address[0]));
+		if (((segAddress & 0x90760000) != 0x90760000) &&
+		    ((segAddress & 0x90740000) != 0x90740000))
+			status = write_fw_segment(state, segAddress,
+						  segLength, (u8 *) segmentPtr->data);
 		if (status)
 			return status;
 		segmentPtr = (MBIN_SEGMENT_T *)
@@ -730,7 +761,7 @@ static int firmware_download(struct mxl *state, u32 mbinBufferSize,
 		return status;
 	usleep_range(1000, 2000);
 
-	/* Reset TX FIFO's, BBAN, XBAR */
+	/* Reset TX FIFO's, BBAND, XBAR */
 	status = write_register(state, HYDRA_RESET_TRANSPORT_FIFO_REG,
 				HYDRA_RESET_TRANSPORT_FIFO_DATA);
 	if (status)
@@ -755,12 +786,34 @@ static int firmware_download(struct mxl *state, u32 mbinBufferSize,
 	status = do_firmware_download(state, mbinBufferSize, mbinBufferPtr);
 	if (status)
 		return status;
-	/* Bring CPU out of reset */
-	status = SET_REG_FIELD_DATA(PRCM_PRCM_CPU_SOFT_RST_N, 1);
+	
+	if (state->base->type == MXL_HYDRA_DEVICE_568) {
+		msleep(10);
+		
+		// bring XCPU out of reset
+		status = write_register(state, 0x90720000, 1);
+		if (status)
+			return status;
+		msleep(500);
+		
+		// Enable XCPU UART message processing in MCPU
+		status = write_register(state, 0x9076B510, 1);
+		if (status)
+			return status;
+	} else {
+		/* Bring CPU out of reset */
+		status = SET_REG_FIELD_DATA(PRCM_PRCM_CPU_SOFT_RST_N, 1);
+		if (status)
+			return status;
+		/* Wait until FW boots */
+		msleep(150);
+	}
+
+	// Initilize XPT XBAR
+	status = write_register(state, XPT_DMD0_BASEADDR, 0x76543210);
 	if (status)
 		return status;
-	/* I2C does not work shortly after reset and can even lock up */
-	msleep(20);
+	
 	if (!firmware_is_alive(state))
 		return -1;
 
@@ -770,9 +823,9 @@ static int firmware_download(struct mxl *state, u32 mbinBufferSize,
 	msleep(50);
 
 	devSkuCfg.skuType = state->base->type;
-	BUILD_HYDRA_CMD(MXL_HYDRA_CFG_SKU_CMD, MXL_CMD_WRITE,
+	BUILD_HYDRA_CMD(MXL_HYDRA_DEV_CFG_SKU_CMD, MXL_CMD_WRITE,
 			cmdSize, &devSkuCfg, cmdBuff);
-	status = send_command(state, cmdSize, &cmdBuff[0]);
+	status = send_command(state, cmdSize + MXL_HYDRA_CMD_HEADER_SIZE, &cmdBuff[0]);
 	if (status)
 		return status;
 
@@ -1045,7 +1098,6 @@ static int config_mux(struct mxl *state)
 
 static int config_dis(struct mxl *state, u32 id)
 {
-	int status;
 	MXL_HYDRA_DISEQC_ID_E diseqcId = id;
 	MXL_HYDRA_DISEQC_OPMODE_E opMode = MXL_HYDRA_DISEQC_ENVELOPE_MODE;
 	MXL_HYDRA_DISEQC_VER_E version = MXL_HYDRA_DISEQC_1_X;
@@ -1062,7 +1114,7 @@ static int config_dis(struct mxl *state, u32 id)
 
 	BUILD_HYDRA_CMD(MXL_HYDRA_DISEQC_CFG_MSG_CMD,
 			MXL_CMD_WRITE, cmdSize, &diseqcMsg, cmdBuff);
-	return send_command(state, cmdSize, &cmdBuff[0]);
+	return send_command(state, cmdSize + MXL_HYDRA_CMD_HEADER_SIZE, &cmdBuff[0]);
 }
 
 static int load_fw(struct mxl *state, struct mxl5xx_cfg *cfg)
@@ -1094,16 +1146,22 @@ static int load_fw(struct mxl *state, struct mxl5xx_cfg *cfg)
 
 static int probe(struct mxl *state, struct mxl5xx_cfg *cfg)
 {
-	u32 data;
+	u32 chipver;
 	int fw, status, j;
 	MXL_HYDRA_MPEGOUT_PARAM_T mpegInterfaceCfg;
 
-	GET_REG_FIELD_DATA(PAD_MUX_BOND_OPTION, &data);
 	fw = firmware_is_alive(state);
 
 	if (!fw)  {
 		SET_REG_FIELD_DATA(PRCM_AFE_REG_CLOCK_ENABLE, 1);
 		SET_REG_FIELD_DATA(PRCM_PRCM_AFE_REG_SOFT_RST_N, 1);
+		status = GET_REG_FIELD_DATA(PRCM_CHIP_VERSION, &chipver);
+		if (status)
+			state->base->chipversion = 0;
+		else
+			state->base->chipversion = (chipver == 2) ? 2 : 1;
+		pr_info("Hydra chip version %u\n", state->base->chipversion);
+		
 #if 0
 		/* only for engineering samples */
 		write_register(state, 0x90200070, 0xF400);
@@ -1197,6 +1255,7 @@ struct dvb_frontend *mxl5xx_attach(struct i2c_adapter *i2c,
 		list_add(&base->mxllist, &mxllist);
 	}
 	state->fe.ops               = mxl_ops;
+	state->fe.ops.xbar[1]       = demod;
 	state->fe.demodulator_priv  = state;
 
 	return &state->fe;

@@ -1,8 +1,12 @@
+0.9.18 (beta) 2015.01.24
+- initial support of GT links
+- fixes for mxl5xx tuning
+
 0.9.17 2015.01.10
-- support input modes for MAX S8 4/8 
+- support input modes for MAX S8 4/8
 	ddbridge parameter fmode:
 	fmode = 0  : demod 0 & 4 on input 0, demod 1 & 5 on input 1, etc.
-	             input for each frontend can be chnaged with ioctl DTV_INPUT
+	             input for each frontend can be changed with ioctl DTV_INPUT
 	fmode = 1  : connect all lines to QUAD LNB
 	fmode = 2  : connect to QUATTRO LNB: input 0=V,L, 1=H,L, 2=V,H, 3=H,H
 	fmode = 3  : all demods on input 0

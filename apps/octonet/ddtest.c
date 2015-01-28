@@ -103,7 +103,7 @@ void Dump(const uint8_t *b, uint32_t start, int l)
 	int i, j;
 	
 	for (j = 0; j < l; j += 16, b += 16) { 
-		printf("%04x: ", start + j);
+		printf("%08x: ", start + j);
 		for (i = 0; i < 16; i++)
 			if (i + j < l)
 				printf("%02x ", b[i]);
@@ -615,7 +615,7 @@ int ReadDeviceMemory(int dev,int argc, char* argv[],uint32_t Flags)
 
 	Start = strtoul(argv[0],NULL,16);
 	Len   = strtoul(argv[1],NULL,16);
-	if( Start > 0xFFFF || Start + Len > 0x10000 || Len == 0 ) return -1;
+	//if( Start > 0xFFFF || Start + Len > 0x10000 || Len == 0 ) return -1;
 	Buffer = malloc(Len);
 
 	{	
@@ -635,7 +635,7 @@ int WriteDeviceMemory(int dev,int argc, char* argv[],uint32_t Flags)
 	if( argc < 2 ) return -1;
 	Start = strtoul(argv[0],NULL,16);
 	Len = argc - 1;
-	if( Start > 0xFFFF || Start + Len > 0x10000 || Len == 0 ) return -1;
+	//if( Start > 0xFFFF || Start + Len > 0x10000 || Len == 0 ) return -1;
 	Buffer = malloc(Len + sizeof(uint32_t));
 	if( Buffer == NULL ) 
 		return -2;
@@ -689,16 +689,16 @@ int GetSetRegister(int dev,int argc, char* argv[],uint32_t Flags)
 
     uint32_t Reg[2];
     char* p;
-    Reg[0] = strtoul(argv[0],&p,16) & 0xFFFC;
+    Reg[0] = strtoul(argv[0],&p,16);// & 0xFFFC;
     uint32_t LastReg = Reg[0];
 
-    if( Reg[0] >= 0x10000 ) return -1;
+    //if( Reg[0] >= 0x10000 ) return -1;
 
     if( argc == 1 )
     {
         if( *p == '-' )
         {
-            LastReg = strtoul(&p[1],NULL,16) & 0xFFFC;
+		LastReg = strtoul(&p[1],NULL,16);// & 0xFFFC;
         }
         else if( *p == '+' )
         {
@@ -708,7 +708,7 @@ int GetSetRegister(int dev,int argc, char* argv[],uint32_t Flags)
 
     uint32_t NumRegs = (LastReg - Reg[0]) / 4 + 1;
 
-    if( LastReg >= 0x10000 || LastReg < Reg[0] ) return -1;
+    //   if( LastReg >= 0x10000 || LastReg < Reg[0] ) return -1;
 
     if( argc > 1 )
     {
@@ -726,7 +726,7 @@ int GetSetRegister(int dev,int argc, char* argv[],uint32_t Flags)
             {
                 return -2;
             }
-            printf(" Register %02X = %08X (%d)\n",Reg[0],Reg[1],Reg[1]);
+            printf(" Register %08X = %08X (%d)\n",Reg[0],Reg[1],Reg[1]);
             Reg[0] += 4;
         }
     }

@@ -113,8 +113,8 @@ static int ddb_i2c_cmd(struct ddb_i2c *i2c, u32 adr, u32 cmd)
 	ddbwritel(dev, (adr << 9) | cmd, i2c->regs + I2C_COMMAND);
 	stat = wait_for_completion_timeout(&i2c->completion, HZ);
 	if (stat <= 0) {
-		pr_err("DDBridge I2C timeout, card %d, port %d\n",
-		       dev->nr, i2c->nr);
+		pr_err("DDBridge I2C timeout, card %d, port %d, link %u\n",
+		       dev->nr, i2c->nr, i2c->link);
 #ifdef CONFIG_PCI_MSI
 		{ /* MSI debugging*/
 			u32 istat = ddbreadl(dev, INTERRUPT_STATUS);
@@ -137,30 +137,27 @@ static int ddb_i2c_master_xfer(struct i2c_adapter *adapter,
 	struct ddb_i2c *i2c = (struct ddb_i2c *) i2c_get_adapdata(adapter);
 	struct ddb *dev = i2c->dev;
 	u8 addr = 0;
-	u32 i2c_buf = dev->info->regmap->i2c_buf->base;
 	
 	if (num)
 		addr = msg[0].addr;
-	if (msg[0].len > I2C_BUF_SIZE)
+	if (msg[0].len > i2c->bsize)
 		return -EIO;
 	if (num == 2 && msg[1].flags & I2C_M_RD &&
 	    !(msg[0].flags & I2C_M_RD)) {
-		if (msg[1].len > I2C_BUF_SIZE)
+		if (msg[1].len > i2c->bsize)
 			return -EIO;
-		ddbcpyto(dev, I2C_TASKMEM_BASE + i2c->wbuf,
-			 msg[0].buf, msg[0].len);
+		ddbcpyto(dev, i2c->wbuf, msg[0].buf, msg[0].len);
 		ddbwritel(dev, msg[0].len | (msg[1].len << 16),
 			  i2c->regs + I2C_TASKLENGTH);
 		if (!ddb_i2c_cmd(i2c, addr, 1)) {
 			ddbcpyfrom(dev, msg[1].buf,
-				   I2C_TASKMEM_BASE + i2c->rbuf,
+				   i2c->rbuf,
 				   msg[1].len);
 			return num;
 		}
 	}
 	if (num == 1 && !(msg[0].flags & I2C_M_RD)) {
-		ddbcpyto(dev, I2C_TASKMEM_BASE + i2c->wbuf,
-			 msg[0].buf, msg[0].len);
+		ddbcpyto(dev, i2c->wbuf, msg[0].buf, msg[0].len);
 		ddbwritel(dev, msg[0].len, i2c->regs + I2C_TASKLENGTH);
 		if (!ddb_i2c_cmd(i2c, addr, 2))
 			return num;
@@ -169,7 +166,7 @@ static int ddb_i2c_master_xfer(struct i2c_adapter *adapter,
 		ddbwritel(dev, msg[0].len << 16, i2c->regs + I2C_TASKLENGTH);
 		if (!ddb_i2c_cmd(i2c, addr, 3)) {
 			ddbcpyfrom(dev, msg[0].buf,
-				   I2C_TASKMEM_BASE + i2c->rbuf, msg[0].len);
+				   i2c->rbuf, msg[0].len);
 			return num;
 		}
 	}
@@ -190,14 +187,10 @@ static void ddb_i2c_release(struct ddb *dev)
 {
 	int i;
 	struct ddb_i2c *i2c;
-	struct i2c_adapter *adap;
 
-	if (!dev->info->regmap->i2c)
-		return;
-	for (i = 0; i < dev->info->regmap->i2c->num; i++) {
+	for (i = 0; i < dev->i2c_num; i++) {
 		i2c = &dev->i2c[i];
-		adap = &i2c->adap;
-		i2c_del_adapter(adap);
+		i2c_del_adapter(&i2c->adap);
 	}
 }
 
@@ -209,17 +202,19 @@ static void i2c_handler(unsigned long priv)
 }
 
 static int ddb_i2c_add(struct ddb *dev, struct ddb_i2c *i2c,
-		       struct ddb_regmap *regmap, int i)
+		       struct ddb_regmap *regmap, int link, int i, int num)
 {
 	struct i2c_adapter *adap;
 	
-	i2c->nr = i;
+	i2c->nr = num;
 	i2c->dev = dev;
-	i2c->wbuf = i * regmap->i2c_buf->size;
-	i2c->rbuf = i2c->wbuf + regmap->i2c_buf->size / 2;
-	i2c->regs = regmap->i2c->base + regmap->i2c->size * i;
+	i2c->link = link;
+	i2c->bsize = regmap->i2c_buf->size;
+	i2c->wbuf = DDB_LINK_TAG(link) | (regmap->i2c_buf->base + i2c->bsize * i);
+	i2c->rbuf = i2c->wbuf + i2c->bsize / 2;
+	i2c->regs = DDB_LINK_TAG(link) | (regmap->i2c->base + regmap->i2c->size * i);
 	ddbwritel(dev, I2C_SPEED_100, i2c->regs + I2C_TIMING);
-	ddbwritel(dev, (i2c->rbuf << 16) | i2c->wbuf,
+	ddbwritel(dev, ((i2c->rbuf & 0xfff) << 16) | (i2c->wbuf & 0xfff),
 		  i2c->regs + I2C_TASKADDRESS);
 	init_completion(&i2c->completion);
 	
@@ -241,28 +236,35 @@ static int ddb_i2c_add(struct ddb *dev, struct ddb_i2c *i2c,
 
 static int ddb_i2c_init(struct ddb *dev)
 {
-	int i, j, stat = 0;
+	int stat = 0;
+	u32 i, j, num = 0, l;
 	struct ddb_i2c *i2c;
 	struct i2c_adapter *adap;
-	struct ddb_regmap *regmap = dev->info->regmap;
+	struct ddb_regmap *regmap;
 	
-	
-	if (!regmap->i2c)
-		return 0;
-	for (i = 0; i < regmap->i2c->num; i++) {
-		i2c = &dev->i2c[i];
-		dev->handler_data[i] = (unsigned long) i2c;
-		dev->handler[i] = i2c_handler;
-		stat = ddb_i2c_add(dev, i2c, regmap, i);
-		if (stat)
-			break;
+	for (l = 0; l < DDB_MAX_LINK; l++) {
+		if (!dev->link[l].info)
+			continue;
+		regmap = dev->link[l].info->regmap;
+		if (!regmap || !regmap->i2c)
+			continue;
+		for (i = 0; i < regmap->i2c->num; i++, num++) {
+			i2c = &dev->i2c[num];
+			dev->handler_data[i + l * 32] = (unsigned long) i2c;
+			dev->handler[i + l * 32] = i2c_handler;
+			stat = ddb_i2c_add(dev, i2c, regmap, l, i, num);
+			if (stat)
+				break;
+		}
 	}
-	if (stat)
-		for (j = 0; j < i; j++) {
+	if (stat) {
+		for (j = 0; j < num; j++) {
 			i2c = &dev->i2c[j];
 			adap = &i2c->adap;
 			i2c_del_adapter(adap);
 		}
+	} else 
+		dev->i2c_num = num;
 	return stat;
 }
 

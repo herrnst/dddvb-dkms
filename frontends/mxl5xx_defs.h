@@ -20,74 +20,85 @@ typedef enum
 typedef enum
 {
   //--Device command IDs--
-  MXL_HYDRA_DEV_NO_OP_CMD = 0, //No OP 
-  
-  MXL_HYDRA_DEV_SET_POWER_MODE_CMD,
-  MXL_HYDRA_DEV_SET_OVERWRITE_DEF_CMD,
-  
+  MXL_HYDRA_DEV_NO_OP_CMD = 0, //No OP
+
+  MXL_HYDRA_DEV_SET_POWER_MODE_CMD = 1,
+  MXL_HYDRA_DEV_SET_OVERWRITE_DEF_CMD = 2,
+
   // Host-used CMD, not used by firmware
-  MXL_HYDRA_DEV_FIRMWARE_DOWNLOAD_CMD,
-  
+  MXL_HYDRA_DEV_FIRMWARE_DOWNLOAD_CMD = 3,
+
   // Additional CONTROL types from DTV
-  MXL_HYDRA_DEV_SET_BROADCAST_PID_STB_ID_CMD,
-  MXL_HYDRA_DEV_GET_PMM_SLEEP_CMD,
- 
-  //--Tuner command IDs--   
-  MXL_HYDRA_TUNER_TUNE_CMD,
-  MXL_HYDRA_TUNER_GET_STATUS_CMD,
-  
+  MXL_HYDRA_DEV_SET_BROADCAST_PID_STB_ID_CMD = 4,
+  MXL_HYDRA_DEV_GET_PMM_SLEEP_CMD = 5,
+
+  //--Tuner command IDs--
+  MXL_HYDRA_TUNER_TUNE_CMD = 6,
+  MXL_HYDRA_TUNER_GET_STATUS_CMD = 7,
+
   //--Demod command IDs--
-  MXL_HYDRA_DEMOD_SET_PARAM_CMD,
-  MXL_HYDRA_DEMOD_GET_STATUS_CMD,
-  
-  MXL_HYDRA_DEMOD_RESET_FEC_COUNTER_CMD, 
-  
-  MXL_HYDRA_DEMOD_SET_PKT_NUM_CMD, 
- 
-  MXL_HYDRA_DEMOD_SET_IQ_SOURCE_CMD,  
-  MXL_HYDRA_DEMOD_GET_IQ_DATA_CMD,    
- 
-  MXL_HYDRA_DEMOD_GET_M68HC05_VER_CMD,                                         
-  
-  MXL_HYDRA_DEMOD_SET_ERROR_COUNTER_MODE_CMD,                                               
+  MXL_HYDRA_DEMOD_SET_PARAM_CMD = 8,
+  MXL_HYDRA_DEMOD_GET_STATUS_CMD = 9,
+
+  MXL_HYDRA_DEMOD_RESET_FEC_COUNTER_CMD = 10,
+
+  MXL_HYDRA_DEMOD_SET_PKT_NUM_CMD = 11,
+
+  MXL_HYDRA_DEMOD_SET_IQ_SOURCE_CMD = 12,
+  MXL_HYDRA_DEMOD_GET_IQ_DATA_CMD = 13,
+
+  MXL_HYDRA_DEMOD_GET_M68HC05_VER_CMD = 14,
+
+  MXL_HYDRA_DEMOD_SET_ERROR_COUNTER_MODE_CMD = 15,
 
   //--- ABORT channel tune
-  MXL_HYDRA_ABORT_TUNE_CMD, // Abort current tune command. 
- 
-  //--SWM/FSK command IDs-- 
-  MXL_HYDRA_FSK_RESET_CMD,
-  MXL_HYDRA_FSK_MSG_CMD,
-  MXL_HYDRA_FSK_SET_OP_MODE_CMD,
-  
+  MXL_HYDRA_ABORT_TUNE_CMD = 16, // Abort current tune command.
+
+  //--SWM/FSK command IDs--
+  MXL_HYDRA_FSK_RESET_CMD = 17,
+  MXL_HYDRA_FSK_MSG_CMD = 18,
+  MXL_HYDRA_FSK_SET_OP_MODE_CMD = 19,
+
   //--DiSeqC command IDs--
-  MXL_HYDRA_DISEQC_MSG_CMD, 
-  MXL_DISEQC_COPY_MSG_TO_MAILBOX,
-  MXL_HYDRA_DISEQC_CFG_MSG_CMD,
+  MXL_HYDRA_DISEQC_MSG_CMD = 20,
+  MXL_HYDRA_DISEQC_COPY_MSG_TO_MAILBOX = 21,
+  MXL_HYDRA_DISEQC_CFG_MSG_CMD = 22,
 
   //--- FFT Debug Command IDs--
-  MXL_HYDRA_REQ_FFT_SPECTRUM_CMD,
+  MXL_HYDRA_REQ_FFT_SPECTRUM_CMD = 23,
 
   // -- Demod scramblle code
-  MXL_HYDRA_DEMOD_SCRAMBLE_CODE_CMD,
-  
+  MXL_HYDRA_DEMOD_SCRAMBLE_CODE_CMD = 24,
+
   //---For host to know how many commands in total---
-  MXL_HYDRA_LAST_HOST_CMD
-  
+  MXL_HYDRA_LAST_HOST_CMD = 25,
+
+  MXL_HYDRA_DEMOD_INTR_TYPE_CMD = 47,
+  MXL_HYDRA_DEV_INTR_CLEAR_CMD = 48,
+  MXL_HYDRA_TUNER_SPECTRUM_REQ_CMD = 53,
+  MXL_HYDRA_TUNER_ACTIVATE_CMD = 55,
+  MXL_HYDRA_DEV_CFG_POWER_MODE_CMD = 56,
+  MXL_HYDRA_DEV_XTAL_CAP_CMD = 57,
+  MXL_HYDRA_DEV_CFG_SKU_CMD = 58,
+  MXL_HYDRA_TUNER_SPECTRUM_MIN_GAIN_CMD = 59,
+  MXL_HYDRA_DISEQC_CONT_TONE_CFG = 60,
+  MXL_HYDRA_DEV_RF_WAKE_UP_CMD = 61,
+  MXL_HYDRA_DEMOD_CFG_EQ_CTRL_PARAM_CMD = 62,
+  MXL_HYDRA_DEMOD_FREQ_OFFSET_SEARCH_RANGE_CMD = 63,
+  MXL_HYDRA_DEV_REQ_PWR_FROM_ADCRSSI_CMD = 64,
+
+  MXL_XCPU_PID_FLT_CFG_CMD = 65,
+  MXL_XCPU_SHMEM_TEST_CMD = 66,
+  MXL_XCPU_ABORT_TUNE_CMD = 67,
+  MXL_XCPU_CHAN_TUNE_CMD = 68,
+  MXL_XCPU_FLT_BOND_HDRS_CMD = 69,
+
+  MXL_HYDRA_DEV_BROADCAST_WAKE_UP_CMD = 70,
+  MXL_HYDRA_FSK_CFG_FSK_FREQ_CMD = 71,
+  MXL_HYDRA_FSK_POWER_DOWN_CMD = 72,
+  MXL_XCPU_CLEAR_CB_STATS_CMD = 73,
+  MXL_XCPU_CHAN_BOND_RESTART_CMD = 74
 } MXL_HYDRA_HOST_CMD_ID_E;
-
-#define MXL_HYDRA_DEMOD_INTR_TYPE_CMD       47
-#define MXL_HYDRA_INTR_CLEAR_CMD            48
-#define MXL_HYDRA_SPECTRUM_REQ_CMD          53
-#define MXL_HYDRA_TUNER_ACTIVATE_CMD        55
-#define MXL_HYDRA_CFG_POWER_MODE_CMD        56 
-#define MXL_HYDRA_XTAL_CAP_CMD              57
-#define MXL_HYDRA_CFG_SKU_CMD               58
-#define MXL_HYDRA_SPECTRUM_MIN_GAIN_CMD     59
-#define MXL_HYDRA_DISEQC_CONT_TONE_CFG      60
-#define MXL_HYDRA_RF_WAKE_UP_CMD            61
-#define MXL_HYDRA_CFG_EQ_CTRL_PARAM_CMD     62
-#define MXL58x_FREQ_OFFSET_SEARCH_RANGE_CMD 63
-
 
 #define MXL_ENABLE_BIG_ENDIAN        (0)
 
@@ -95,8 +106,8 @@ typedef enum
 
 #define MXL_HYDRA_OEM_MAX_CMD_BUFF_LEN        (248)
 
-#define MXL_HYDRA_CAP_MIN     12
-#define MXL_HYDRA_CAP_MAX     18
+#define MXL_HYDRA_CAP_MIN     10
+#define MXL_HYDRA_CAP_MAX     33
 
 #define MXL_HYDRA_PLID_REG_READ       0xFB   // Read register PLID
 #define MXL_HYDRA_PLID_REG_WRITE      0xFC   // Write register PLID
@@ -105,8 +116,16 @@ typedef enum
 #define MXL_HYDRA_PLID_CMD_WRITE      0xFE   // Command Write PLID
 
 #define MXL_HYDRA_REG_SIZE_IN_BYTES   4      // Hydra register size in bytes
-
 #define MXL_HYDRA_I2C_HDR_SIZE        (2 * sizeof(u8))   // PLID + LEN(0xFF)
+#define MXL_HYDRA_CMD_HEADER_SIZE     (MXL_HYDRA_REG_SIZE_IN_BYTES + MXL_HYDRA_I2C_HDR_SIZE)
+
+#define MXL_HYDRA_SKU_ID_581 0
+#define MXL_HYDRA_SKU_ID_584 1
+#define MXL_HYDRA_SKU_ID_585 2
+#define MXL_HYDRA_SKU_ID_544 3
+#define MXL_HYDRA_SKU_ID_561 4
+#define MXL_HYDRA_SKU_ID_582 5
+#define MXL_HYDRA_SKU_ID_568 6
 
 // macro for register write data buffer size (PLID + LEN (0xFF) + RegAddr + RegData)
 #define MXL_HYDRA_REG_WRITE_LEN       (MXL_HYDRA_I2C_HDR_SIZE + (2 * MXL_HYDRA_REG_SIZE_IN_BYTES)) 
@@ -121,6 +140,7 @@ typedef enum
 #define GET_REG_FIELD_DATA(fieldName, dataPtr) read_by_mnemonic(state, fieldName, dataPtr);
 #define SET_REG_FIELD_DATA(fieldName, data) update_by_mnemonic(state, fieldName, data);
 
+#define FW_DL_SIGN (0xDEADBEEF)
 
 #define MBIN_FORMAT_VERSION               '1'
 #define MBIN_FILE_HEADER_ID               'M'
@@ -172,7 +192,6 @@ typedef enum { MXL_CMD_WRITE = 0, MXL_CMD_READ} MXL_CMD_TYPE_E;
 		cmdBuff[5] = 0x00;					\
 		convert_endian(MXL_ENABLE_BIG_ENDIAN, size, (u8 *)dataPtr); \
 		memcpy((void *)&cmdBuff[6], dataPtr, size);		\
-		size += 6;						\
 	} while(0) //;
 
 typedef struct {
@@ -198,7 +217,11 @@ typedef enum
   MXL_HYDRA_SKU_TYPE_5yy = 0x06,
   MXL_HYDRA_SKU_TYPE_511 = 0x07,
   MXL_HYDRA_SKU_TYPE_561_DE = 0x08,
-  MXL_HYDRA_SKU_TYPE_MAX = 0x09,
+  MXL_HYDRA_SKU_TYPE_582 = 0x09,
+  MXL_HYDRA_SKU_TYPE_541 = 0x0A,
+  MXL_HYDRA_SKU_TYPE_568 = 0x0B,
+  MXL_HYDRA_SKU_TYPE_542 = 0x0C,
+  MXL_HYDRA_SKU_TYPE_MAX = 0x0D,
 } MXL_HYDRA_SKU_TYPE_E;
 
 typedef struct
@@ -232,6 +255,9 @@ typedef  enum
 #define MAX_STEP_SIZE_27_XTAL_306_15_KHZ  203
 #define MAX_STEP_SIZE_27_XTAL_408_20_KHZ  177
 
+#define MXL_HYDRA_SPECTRUM_MIN_FREQ_KHZ  300000
+#define MXL_HYDRA_SPECTRUM_MAX_FREQ_KHZ 2350000
+
 typedef enum
 {
   DMD_STANDARD_ADDR = 0,
@@ -261,7 +287,7 @@ typedef enum
 
   MXL_DEMOD_CHAN_PARAMS_BUFF_SIZE,
 } MXL_DEMOD_CHAN_PARAMS_OFFSET_E;
-  
+
 typedef enum 
 {
   MXL_HYDRA_TUNER_ID_0 = 0,
@@ -501,12 +527,14 @@ typedef enum
 } MXL_HYDRA_TS_PID_TYPE_E;
 
 typedef struct
-{ 
-  u16 originalPid;           // pid from TS
-  u16 remappedPid;           // remapped pid
-  MXL_BOOL_E enable;            // enable or disable pid
-  MXL_BOOL_E allowOrDrop;       // allow or drop pid
-  MXL_BOOL_E enablePidRemap;    // enable or disable pid remap
+{
+	u16 originalPid;           // pid from TS
+	u16 remappedPid;           // remapped pid
+	MXL_BOOL_E enable;            // enable or disable pid
+	MXL_BOOL_E allowOrDrop;       // allow or drop pid
+	MXL_BOOL_E enablePidRemap;    // enable or disable pid remap
+	u8 bondId;                 // Bond ID in A0 always 0 - Only for 568 Sku
+	u8 destId;                 // Output port ID for the PID - Only for 568 Sku
 } MXL_HYDRA_TS_PID_T;
 
 typedef struct
@@ -597,7 +625,7 @@ typedef enum
 
 } MXL_HYDRA_EXT_TS_IN_ID_E;
 
-typedef  enum 
+typedef  enum
 {
   MXL_HYDRA_TS_OUT_0 = 0,
   MXL_HYDRA_TS_OUT_1,
@@ -605,6 +633,8 @@ typedef  enum
   MXL_HYDRA_TS_OUT_3,
   MXL_HYDRA_TS_OUT_4,
   MXL_HYDRA_TS_OUT_5,
+  MXL_HYDRA_TS_OUT_6,
+  MXL_HYDRA_TS_OUT_7,
   MXL_HYDRA_TS_OUT_MAX
 
 } MXL_HYDRA_TS_OUT_ID_E;
@@ -630,7 +660,13 @@ typedef enum
   MXL_HYDRA_DEVICE_544,
   MXL_HYDRA_DEVICE_561,
   MXL_HYDRA_DEVICE_TEST,
-  MXL_HYDRA_DEVICE_561DE,
+  MXL_HYDRA_DEVICE_582,
+  MXL_HYDRA_DEVICE_541,
+  MXL_HYDRA_DEVICE_568,
+  MXL_HYDRA_DEVICE_542,
+  MXL_HYDRA_DEVICE_541S,
+  MXL_HYDRA_DEVICE_561S,
+  MXL_HYDRA_DEVICE_581S,
   MXL_HYDRA_DEVICE_MAX
 } MXL_HYDRA_DEVICE_E;
 

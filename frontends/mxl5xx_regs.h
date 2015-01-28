@@ -1,19 +1,18 @@
-
 /*
-* Copyright (c) 2011-2013 MaxLinear, Inc. All rights reserved 
-* 
+* Copyright (c) 2011-2013 MaxLinear, Inc. All rights reserved
+*
 * License type: GPLv2
 *
-* This program is free software; you can redistribute it and/or modify it under 
-* the terms of the GNU General Public License as published by the Free Software 
+* This program is free software; you can redistribute it and/or modify it under
+* the terms of the GNU General Public License as published by the Free Software
 * Foundation.
 *
-* This program is distributed in the hope that it will be useful, but WITHOUT 
+* This program is distributed in the hope that it will be useful, but WITHOUT
 * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-* FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more details. 
-*  
-* You should have received a copy of the GNU General Public License along with 
-* this program; if not, write to the Free Software Foundation, Inc., 
+* FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License along with
+* this program; if not, write to the Free Software Foundation, Inc.,
 * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
 *
 * This program may alternatively be licensed under a proprietary license from
@@ -33,8 +32,8 @@ extern "C" {
 #define HYDRA_INTR_STATUS_REG               0x80030008
 #define HYDRA_INTR_MASK_REG                 0x8003000C
 
-#define HYDRA_CRYSTAL_SETTING               (0x3FFFC5F0) // 0 - 24 MHz & 1 - 27 MHz
-#define HYDRA_CRYSTAL_CAP                   (0x3FFFEDA4) // 0 - 24 MHz & 1 - 27 MHz
+#define HYDRA_CRYSTAL_SETTING               0x3FFFC5F0 // 0 - 24 MHz & 1 - 27 MHz
+#define HYDRA_CRYSTAL_CAP                   0x3FFFEDA4 // 0 - 24 MHz & 1 - 27 MHz
 
 #define HYDRA_CPU_RESET_REG                 0x8003003C
 #define HYDRA_CPU_RESET_DATA                0x00000400
@@ -48,46 +47,50 @@ extern "C" {
 #define HYDRA_RESET_XBAR_REG                0x80030020
 #define HYDRA_RESET_XBAR_DATA               0x00000000
 
-#define HYDRA_MODULES_CLK_1_REG             0x80030014 
+#define HYDRA_MODULES_CLK_1_REG             0x80030014
 #define HYDRA_DISABLE_CLK_1                 0x00000000
 
-#define HYDRA_MODULES_CLK_2_REG             0x8003001C 
+#define HYDRA_MODULES_CLK_2_REG             0x8003001C
 #define HYDRA_DISABLE_CLK_2                 0x0000000B
 
 #define HYDRA_PRCM_ROOT_CLK_REG             0x80030018
 #define HYDRA_PRCM_ROOT_CLK_DISABLE         0x00000000
 
-#define HYDRA_CPU_RESET_CHECK_REG           0x80030008  
+#define HYDRA_CPU_RESET_CHECK_REG           0x80030008
 #define HYDRA_CPU_RESET_CHECK_OFFSET        0x40000000  //  <bit 30>
 
 #define HYDRA_SKU_ID_REG                    0x90000190
 
+#define FW_DL_SIGN_ADDR                     0x3FFFEAE0
+
 // Register to check if FW is running or not
-#define HYDRA_HEAR_BEAT                          (0x3FFFEDDC)
+#define HYDRA_HEAR_BEAT                     0x3FFFEDDC
 
 // Firmware version
-#define HYDRA_FIRMWARE_VERSION                    (0x3FFFEDB8)
-#define HYDRA_FW_RC_VERSION                       (0x3FFFCFAC)
+#define HYDRA_FIRMWARE_VERSION              0x3FFFEDB8
+#define HYDRA_FW_RC_VERSION                 0x3FFFCFAC
 
 // Firmware patch version
-#define HYDRA_FIRMWARE_PATCH_VERSION              (0x3FFFEDC2)
+#define HYDRA_FIRMWARE_PATCH_VERSION        0x3FFFEDC2
 
 // SOC operating temperature in C
-#define HYDRA_TEMPARATURE                        (0x3FFFEDB4)
-  
+#define HYDRA_TEMPARATURE                   0x3FFFEDB4
+
 // Demod & Tuner status registers
 // Demod 0 status base address
-#define HYDRA_DEMOD_0_BASE_ADDR               0x3FFFC64C
+#define HYDRA_DEMOD_0_BASE_ADDR             0x3FFFC64C
 
 // Tuner 0 status base address
-#define HYDRA_TUNER_0_BASE_ADDR               0x3FFFCE4C
+#define HYDRA_TUNER_0_BASE_ADDR             0x3FFFCE4C
+
+#define POWER_FROM_ADCRSSI_READBACK         0x3FFFEB6C
 
 // Macros to determine base address of respective demod or tuner
 #define HYDRA_DMD_STATUS_OFFSET(demodID)        ((demodID) * 0x100)
 #define HYDRA_TUNER_STATUS_OFFSET(tunerID)      ((tunerID) * 0x40)
 
 // Demod status address offset from respective demod's base address
-#define HYDRA_DMD_AGC_DIG_LEVEL_ADDR_OFFSET               0x3FFFC64C  
+#define HYDRA_DMD_AGC_DIG_LEVEL_ADDR_OFFSET               0x3FFFC64C
 #define HYDRA_DMD_LOCK_STATUS_ADDR_OFFSET                 0x3FFFC650
 #define HYDRA_DMD_ACQ_STATUS_ADDR_OFFSET                  0x3FFFC654
 
@@ -118,51 +121,60 @@ extern "C" {
 #define HYDRA_DMD_DVBS_BER_COUNT_ADDR_OFFSET              0x3FFFC6A4
 #define HYDRA_DMD_DVBS_BER_WINDOW_ADDR_OFFSET             0x3FFFC6A8
 
+// Debug-purpose DVB-S DMD 0
+#define HYDRA_DMD_DVBS_1ST_CORR_RS_ERRORS_ADDR_OFFSET     0x3FFFC6C8  // corrected RS Errors: 1st iteration
+#define HYDRA_DMD_DVBS_1ST_UNCORR_RS_ERRORS_ADDR_OFFSET   0x3FFFC6CC  // uncorrected RS Errors: 1st iteration
 #define HYDRA_DMD_DVBS_BER_COUNT_1ST_ADDR_OFFSET          0x3FFFC6D0
 #define HYDRA_DMD_DVBS_BER_WINDOW_1ST_ADDR_OFFSET         0x3FFFC6D4
 
 #define HYDRA_DMD_TUNER_ID_ADDR_OFFSET                    0x3FFFC6AC
 #define HYDRA_DMD_DVBS2_PILOT_ON_OFF_ADDR_OFFSET          0x3FFFC6B0
 #define HYDRA_DMD_FREQ_SEARCH_RANGE_KHZ_ADDR_OFFSET       0x3FFFC6B4
-#define HYDRA_DMD_STATUS_LOCK_ADDR_OFFSET                 0x3FFFC6B8   
-#define HYDRA_DMD_STATUS_CENTER_FREQ_IN_KHZ_ADDR          0x3FFFC704 
+#define HYDRA_DMD_STATUS_LOCK_ADDR_OFFSET                 0x3FFFC6B8
+#define HYDRA_DMD_STATUS_CENTER_FREQ_IN_KHZ_ADDR          0x3FFFC704
 #define HYDRA_DMD_STATUS_INPUT_POWER_ADDR                 0x3FFFC708
 
-#define DMD0_SPECTRUM_MIN_GAIN_STATUS                     (0x3FFFC73C)
-#define DMD0_SPECTRUM_MIN_GAIN_WB_SAGC_VALUE              (0x3FFFC740)
-#define DMD0_SPECTRUM_ MIN_GAIN_NB_SAGC_VALUE             (0x3FFFC744)
+// DVB-S new scaled_BER_count for a new BER API, see HYDRA-1343 "DVB-S post viterbi information"
+#define DMD0_STATUS_DVBS_1ST_SCALED_BER_COUNT_ADDR        0x3FFFC710 // DMD 0: 1st iteration BER count scaled by HYDRA_BER_COUNT_SCALING_FACTOR
+#define DMD0_STATUS_DVBS_SCALED_BER_COUNT_ADDR            0x3FFFC714 // DMD 0: 2nd iteration BER count scaled by HYDRA_BER_COUNT_SCALING_FACTOR
+
+#define DMD0_SPECTRUM_MIN_GAIN_STATUS                     0x3FFFC73C
+#define DMD0_SPECTRUM_MIN_GAIN_WB_SAGC_VALUE              0x3FFFC740
+#define DMD0_SPECTRUM_ MIN_GAIN_NB_SAGC_VALUE             0x3FFFC744
 
 #define HYDRA_DMD_STATUS_END_ADDR_OFFSET                  0x3FFFC748
 
 // Tuner status address offset from respective tuners's base address
-#define HYDRA_TUNER_DEMOD_ID_ADDR_OFFSET              	   0x3FFFCE4C
-#define HYDRA_TUNER_AGC_LOCK_OFFSET    	                  0x3FFFCE50
-#define HYDRA_TUNER_SPECTRUM_STATUS_OFFSET                0x3FFFCE54   
-#define HYDRA_TUNER_SPECTRUM_BIN_SIZE_OFFSET              0x3FFFCE58   
-#define HYDRA_TUNER_SPECTRUM_ADDRESS_OFFSET               0x3FFFCE5C   
+#define HYDRA_TUNER_DEMOD_ID_ADDR_OFFSET                  0x3FFFCE4C
+#define HYDRA_TUNER_AGC_LOCK_OFFSET                       0x3FFFCE50
+#define HYDRA_TUNER_SPECTRUM_STATUS_OFFSET                0x3FFFCE54
+#define HYDRA_TUNER_SPECTRUM_BIN_SIZE_OFFSET              0x3FFFCE58
+#define HYDRA_TUNER_SPECTRUM_ADDRESS_OFFSET               0x3FFFCE5C
+#define HYDRA_TUNER_ENABLE_COMPLETE                       0x3FFFEB78
 
-#define HYDRA_DEMOD_STATUS_LOCK(devId,demodId)   MxLWare_HYDRA_WriteRegister(devId,(HYDRA_DMD_STATUS_LOCK_ADDR_OFFSET + HYDRA_DMD_STATUS_OFFSET(demodId)), MXL_YES)
-#define HYDRA_DEMOD_STATUS_UNLOCK(devId,demodId) MxLWare_HYDRA_WriteRegister(devId,(HYDRA_DMD_STATUS_LOCK_ADDR_OFFSET + HYDRA_DMD_STATUS_OFFSET(demodId)), MXL_NO)
+#define HYDRA_DEMOD_STATUS_LOCK(devId, demodId)   write_register(devId, (HYDRA_DMD_STATUS_LOCK_ADDR_OFFSET + HYDRA_DMD_STATUS_OFFSET(demodId)), MXL_YES)
+#define HYDRA_DEMOD_STATUS_UNLOCK(devId, demodId) write_register(devId, (HYDRA_DMD_STATUS_LOCK_ADDR_OFFSET + HYDRA_DMD_STATUS_OFFSET(demodId)), MXL_NO)
 
 #define HYDRA_TUNER_STATUS_LOCK(devId,tunerId)   MxLWare_HYDRA_WriteRegister(devId,(HYDRA_TUNER_STATUS_LOCK_ADDR_OFFSET + HYDRA_TUNER_STATUS_OFFSET(tunerId)), MXL_YES)
 #define HYDRA_TUNER_STATUS_UNLOCK(devId,tunerId) MxLWare_HYDRA_WriteRegister(devId,(HYDRA_TUNER_STATUS_LOCK_ADDR_OFFSET + HYDRA_TUNER_STATUS_OFFSET(tunerId)), MXL_NO)
 
-#define HYDRA_VERSION                            (0x3FFFEDB8)
-#define HYDRA_DEMOD0_VERSION                     (0x3FFFEDBC)
-#define HYDRA_DEMOD1_VERSION                     (0x3FFFEDC0)
-#define HYDRA_DEMOD2_VERSION                     (0x3FFFEDC4)
-#define HYDRA_DEMOD3_VERSION                     (0x3FFFEDC8)
-#define HYDRA_DEMOD4_VERSION                     (0x3FFFEDCC)
-#define HYDRA_DEMOD5_VERSION                     (0x3FFFEDD0)
-#define HYDRA_DEMOD6_VERSION                     (0x3FFFEDD4)
-#define HYDRA_DEMOD7_VERSION                     (0x3FFFEDD8)
-#define HYDRA_HEAR_BEAT                          (0x3FFFEDDC)
+#define HYDRA_VERSION                                     0x3FFFEDB8
+#define HYDRA_DEMOD0_VERSION                              0x3FFFEDBC
+#define HYDRA_DEMOD1_VERSION                              0x3FFFEDC0
+#define HYDRA_DEMOD2_VERSION                              0x3FFFEDC4
+#define HYDRA_DEMOD3_VERSION                              0x3FFFEDC8
+#define HYDRA_DEMOD4_VERSION                              0x3FFFEDCC
+#define HYDRA_DEMOD5_VERSION                              0x3FFFEDD0
+#define HYDRA_DEMOD6_VERSION                              0x3FFFEDD4
+#define HYDRA_DEMOD7_VERSION                              0x3FFFEDD8
+#define HYDRA_HEAR_BEAT                                   0x3FFFEDDC
+#define HYDRA_SKU_MGMT                                    0x3FFFEBC0
 
-#define MXL_HYDRA_FPGA_A_ADDRESS       0x91C00000
-#define MXL_HYDRA_FPGA_B_ADDRESS       0x91D00000
+#define MXL_HYDRA_FPGA_A_ADDRESS                          0x91C00000
+#define MXL_HYDRA_FPGA_B_ADDRESS                          0x91D00000
 
 // TS control base address
-#define HYDRA_TS_CTRL_BASE_ADDR             0x90700000
+#define HYDRA_TS_CTRL_BASE_ADDR                           0x90700000
 
 #define MPEG_MUX_MODE_SLICE0_REG            HYDRA_TS_CTRL_BASE_ADDR + 0x08
 #define MPEG_MUX_MODE_SLICE0_OFFSET         (0),(2)
@@ -178,7 +190,7 @@ extern "C" {
 
 #define HW_REGULAR_PID_BANK_OFFSET          8,4
 #define HW_FIXED_PID_BANK_OFFSET            4,4
-  
+
 #define MPEG_CLK_GATED_REG                  HYDRA_TS_CTRL_BASE_ADDR + 0x20
 #define MPEG_CLK_GATED_OFFSET               0,1
 
@@ -186,16 +198,16 @@ extern "C" {
 #define MPEG_CLK_ALWAYS_ON_OFFSET           0,1
 
 #define HYDRA_REGULAR_PID_BANK_A_REG        HYDRA_TS_CTRL_BASE_ADDR + 0x190
-#define HYDRA_REGULAR_PID_BAN K_A_OFFSET     0,1    
+#define HYDRA_REGULAR_PID_BAN K_A_OFFSET     0,1
 
 #define HYDRA_FIXED_PID_BANK_A_REG          HYDRA_TS_CTRL_BASE_ADDR + 0x190
-#define HYDRA_FIXED_PID_BANK_A_OFFSET       1,1    
+#define HYDRA_FIXED_PID_BANK_A_OFFSET       1,1
 
 #define HYDRA_REGULAR_PID_BANK_B_REG        HYDRA_TS_CTRL_BASE_ADDR + 0x1B0
-#define HYDRA_REGULAR_PID_BANK_B_OFFSET     0,1    
+#define HYDRA_REGULAR_PID_BANK_B_OFFSET     0,1
 
 #define HYDRA_FIXED_PID_BANK_B_REG          HYDRA_TS_CTRL_BASE_ADDR + 0x1B0
-#define HYDRA_FIXED_PID_BANK_B_OFFSET       1,1    
+#define HYDRA_FIXED_PID_BANK_B_OFFSET       1,1
 
 #define FIXED_PID_TBL_REG_ADDRESS_0         HYDRA_TS_CTRL_BASE_ADDR + 0x9000
 #define FIXED_PID_TBL_REG_ADDRESS_1         HYDRA_TS_CTRL_BASE_ADDR + 0x9100
@@ -230,6 +242,7 @@ extern "C" {
 
 ///////////////////////////////////////////////
 
+#if 0
 #define AFE_REG_D2A_TA_ADC_CLK_OUT_FLIP 0x90200004,12,1
 #define AFE_REG_D2A_TA_RFFE_LNACAPLOAD_1P8 0x90200028,24,4
 #define AFE_REG_D2A_TA_RFFE_RF1_EN_1P8 0x90200028,5,1
@@ -246,8 +259,28 @@ extern "C" {
 #define AFE_REG_D2A_TD_RFFE_LNACAPLOAD_1P8 0x9020003C,17,4
 #define AFE_REG_D2A_TD_RFFE_RF1_EN_1P8 0x90200038,29,1
 #define AFE_REG_D2A_TD_RFFE_SPARE_1P8 0x9020003C,1,8
+#endif
 #define AFE_REG_D2A_XTAL_EN_CLKOUT_1P8 0x90200054,23,1
+
+#define   PAD_MUX_TS0_IN_CLK_PINMUX_SEL                          0x90000018,0,3
+#define   PAD_MUX_TS0_IN_DATA_PINMUX_SEL                         0x90000018,4,3
+#define   PAD_MUX_TS1_IN_CLK_PINMUX_SEL                          0x90000018,8,3
+#define   PAD_MUX_TS1_IN_DATA_PINMUX_SEL                         0x90000018,12,3
+#define   PAD_MUX_TS2_IN_CLK_PINMUX_SEL                          0x90000018,16,3
+#define   PAD_MUX_TS2_IN_DATA_PINMUX_SEL                         0x90000018,20,3
+#define   PAD_MUX_TS3_IN_CLK_PINMUX_SEL                          0x90000018,24,3
+#define   PAD_MUX_TS3_IN_DATA_PINMUX_SEL                         0x90000018,28,3
+
+#define   PAD_MUX_GPIO_00_SYNC_BASEADDR                          0x90000188
+#define   PAD_MUX_GPIO_01_SYNC_IN                                PAD_MUX_GPIO_00_SYNC_BASEADDR,1,1
+
+#define PRCM_AFE_SOC_ID 0x80030004,24,8
+
+#define PAD_MUX_UART_RX_C_PINMUX_BASEADDR 0x9000001C
+#define PAD_MUX_UART_RX_C_PINMUX_SEL PAD_MUX_UART_RX_C_PINMUX_BASEADDR,0,3
+#define PAD_MUX_UART_RX_D_PINMUX_SEL PAD_MUX_UART_RX_C_PINMUX_BASEADDR,4,3
 #define PAD_MUX_BOND_OPTION 0x90000190,0,3
+#define PAD_MUX_DIGIO_01_PINMUX_SEL 0x9000016C,4,3
 #define PAD_MUX_DIGIO_02_PINMUX_SEL 0x9000016C,8,3
 #define PAD_MUX_DIGIO_03_PINMUX_SEL 0x9000016C,12,3
 #define PAD_MUX_DIGIO_04_PINMUX_SEL 0x9000016C,16,3
@@ -273,11 +306,14 @@ extern "C" {
 #define PAD_MUX_DIGIO_24_PINMUX_SEL 0x90000178,0,3
 #define PAD_MUX_DIGIO_25_PINMUX_SEL 0x90000178,4,3
 #define PAD_MUX_DIGIO_26_PINMUX_SEL 0x90000178,8,3
+#define PAD_MUX_DIGIO_27_PINMUX_SEL 0x90000178,12,3
 #define PAD_MUX_DIGIO_28_PINMUX_SEL 0x90000178,16,3
 #define PAD_MUX_DIGIO_29_PINMUX_SEL 0x90000178,20,3
 #define PAD_MUX_DIGIO_30_PINMUX_SEL 0x90000178,24,3
+#define PAD_MUX_DIGIO_31_PINMUX_SEL 0x90000178,28,3
 #define PAD_MUX_DIGIO_32_PINMUX_SEL 0x9000017C,0,3
 #define PAD_MUX_DIGIO_33_PINMUX_SEL 0x9000017C,4,3
+#define PAD_MUX_DIGIO_34_PINMUX_SEL 0x9000017C,8,3
 #define PAD_MUX_EJTAG_TCK_PINMUX_SEL 0x90000020,0,3
 #define PAD_MUX_EJTAG_TDI_PINMUX_SEL 0x90000020,8,3
 #define PAD_MUX_EJTAG_TMS_PINMUX_SEL 0x90000020,4,3
@@ -300,7 +336,7 @@ extern "C" {
 #define PAD_MUX_PAD_DRV_DIGIO_30 0x900001A0,24,3
 #define PAD_MUX_PAD_DRV_DIGIO_31 0x900001A0,28,3
 #define PRCM_AFE_REG_CLOCK_ENABLE 0x80030014,9,1
-#define PRCM_CHIP_VERSION 0x80030000,0,4
+#define PRCM_CHIP_VERSION 0x80030000,12,4
 #define PRCM_AFE_CHIP_MMSK_VER 0x80030004,8,8
 #define PRCM_PRCM_AFE_REG_SOFT_RST_N 0x8003003C,12,1
 #define PRCM_PRCM_CPU_SOFT_RST_N 0x8003003C,0,1
@@ -501,8 +537,23 @@ extern "C" {
 #define XPT_VALID_POLARITY7 0x90700014,7,1
 #define XPT_ZERO_FILL_COUNT 0x90700008,8,6
 
+#define   XPT_PACKET_GAP_MIN_BASEADDR                            0x90700044
+#define   XPT_PACKET_GAP_MIN_TIMER                               XPT_PACKET_GAP_MIN_BASEADDR,0,16
+#define   XPT_NCO_COUNT_MIN0 XPT_PACKET_GAP_MIN_BASEADDR,16,8
+#define   XPT_NCO_COUNT_BASEADDR                                 0x90700238
+#define   XPT_NCO_COUNT_MIN1 XPT_NCO_COUNT_BASEADDR,0,8
+#define   XPT_NCO_COUNT_MIN2 XPT_NCO_COUNT_BASEADDR,8,8
+#define   XPT_NCO_COUNT_MIN3 XPT_NCO_COUNT_BASEADDR,16,8
+#define   XPT_NCO_COUNT_MIN4 XPT_NCO_COUNT_BASEADDR,24,8
+
+#define   XPT_NCO_COUNT_BASEADDR1                                0x9070023C
+#define   XPT_NCO_COUNT_MIN5 XPT_NCO_COUNT_BASEADDR1,0,8
+#define   XPT_NCO_COUNT_MIN6 XPT_NCO_COUNT_BASEADDR1,8,8
+#define   XPT_NCO_COUNT_MIN7 XPT_NCO_COUNT_BASEADDR1,16,8
+
 // V2 DigRF status register
 #define   BB0_DIGRF_CAPT_DONE                                    0x908000CC,0,1
+#define   PRCM_PRCM_CHIP_ID                                      0x80030000,0,12
 
 #define   XPT_PID_BASEADDR                                       0x90708000
 #define   XPT_PID_VALID0                                         XPT_PID_BASEADDR,0,1
@@ -760,6 +811,128 @@ extern "C" {
 #define   XPT_BERT_ANALYZER_BASEADDR9                            0x90700174
 #define   XPT_BERT_ANALYZER_TSTAMP7                              XPT_BERT_ANALYZER_BASEADDR9,0,32
 
+#define   XPT_DMD0_BASEADDR                                      0x9070024C
+#define   XPT_DMD0_SEL                                           XPT_DMD0_BASEADDR,0,3
+#define   XPT_DMD1_SEL                                           XPT_DMD0_BASEADDR,4,3
+#define   XPT_DMD2_SEL                                           XPT_DMD0_BASEADDR,8,3
+#define   XPT_DMD3_SEL                                           XPT_DMD0_BASEADDR,12,3
+#define   XPT_DMD4_SEL                                           XPT_DMD0_BASEADDR,16,3
+#define   XPT_DMD5_SEL                                           XPT_DMD0_BASEADDR,20,3
+#define   XPT_DMD6_SEL                                           XPT_DMD0_BASEADDR,24,3
+#define   XPT_DMD7_SEL                                           XPT_DMD0_BASEADDR,28,3
+
+// V2 AGC Gain Freeze & step
+#define   DBG_ENABLE_DISABLE_AGC                                 (0x3FFFCF60) // 1: DISABLE, 0:ENABLE
+#define   WB_DFE0_DFE_FB_RF1_BASEADDR                            0x903004A4
+#define   WB_DFE0_DFE_FB_RF1_BO                                  WB_DFE0_DFE_FB_RF1_BASEADDR,0,3
+#define   WB_DFE0_DFE_FB_RF2_BO                                  WB_DFE0_DFE_FB_RF1_BASEADDR,4,4
+#define   WB_DFE0_DFE_FB_LNA_BO                                  WB_DFE0_DFE_FB_RF1_BASEADDR,8,2
+
+#define   WB_DFE1_DFE_FB_RF1_BASEADDR                            0x904004A4
+#define   WB_DFE1_DFE_FB_RF1_BO                                  WB_DFE1_DFE_FB_RF1_BASEADDR,0,3
+#define   WB_DFE1_DFE_FB_RF2_BO                                  WB_DFE1_DFE_FB_RF1_BASEADDR,4,4
+#define   WB_DFE1_DFE_FB_LNA_BO                                  WB_DFE1_DFE_FB_RF1_BASEADDR,8,2
+
+#define   WB_DFE2_DFE_FB_RF1_BASEADDR                            0x905004A4
+#define   WB_DFE2_DFE_FB_RF1_BO                                  WB_DFE2_DFE_FB_RF1_BASEADDR,0,3
+#define   WB_DFE2_DFE_FB_RF2_BO                                  WB_DFE2_DFE_FB_RF1_BASEADDR,4,4
+#define   WB_DFE2_DFE_FB_LNA_BO                                  WB_DFE2_DFE_FB_RF1_BASEADDR,8,2
+
+#define   WB_DFE3_DFE_FB_RF1_BASEADDR                            0x906004A4
+#define   WB_DFE3_DFE_FB_RF1_BO                                  WB_DFE3_DFE_FB_RF1_BASEADDR,0,3
+#define   WB_DFE3_DFE_FB_RF2_BO                                  WB_DFE3_DFE_FB_RF1_BASEADDR,4,4
+#define   WB_DFE3_DFE_FB_LNA_BO                                  WB_DFE3_DFE_FB_RF1_BASEADDR,8,2
+
+#define   AFE_REG_D2A_TA_RFFE_LNA_BO_1P8_BASEADDR                0x90200104
+#define   AFE_REG_D2A_TA_RFFE_LNA_BO_1P8_2                       AFE_REG_D2A_TA_RFFE_LNA_BO_1P8_BASEADDR,0,1
+#define   AFE_REG_D2A_TA_RFFE_RF1_BO_1P8_3                       AFE_REG_D2A_TA_RFFE_LNA_BO_1P8_BASEADDR,1,1
+#define   AFE_REG_D2A_TB_RFFE_LNA_BO_1P8_2                       AFE_REG_D2A_TA_RFFE_LNA_BO_1P8_BASEADDR,2,1
+#define   AFE_REG_D2A_TB_RFFE_RF1_BO_1P8_3                       AFE_REG_D2A_TA_RFFE_LNA_BO_1P8_BASEADDR,3,1
+#define   AFE_REG_D2A_TC_RFFE_LNA_BO_1P8_2                       AFE_REG_D2A_TA_RFFE_LNA_BO_1P8_BASEADDR,4,1
+#define   AFE_REG_D2A_TC_RFFE_RF1_BO_1P8_3                       AFE_REG_D2A_TA_RFFE_LNA_BO_1P8_BASEADDR,5,1
+#define   AFE_REG_D2A_TD_RFFE_LNA_BO_1P8_2                       AFE_REG_D2A_TA_RFFE_LNA_BO_1P8_BASEADDR,6,1
+#define   AFE_REG_D2A_TD_RFFE_RF1_BO_1P8_3                       AFE_REG_D2A_TA_RFFE_LNA_BO_1P8_BASEADDR,7,1
+
+#define   AFE_REG_AFE_REG_SPARE_BASEADDR                         0x902000A0
+#define   AFE_REG_D2A_TA_RFFE_RF1_CAP_1P8                        AFE_REG_AFE_REG_SPARE_BASEADDR,13,5
+
+#define   AFE_REG_AFE_REG_SPARE_BASEADDR1                        0x902000B4
+#define   AFE_REG_D2A_TB_RFFE_RF1_CAP_1P8                        AFE_REG_AFE_REG_SPARE_BASEADDR1,13,5
+
+#define   AFE_REG_AFE_REG_SPARE_BASEADDR2                        0x902000C4
+#define   AFE_REG_D2A_TC_RFFE_RF1_CAP_1P8                        AFE_REG_AFE_REG_SPARE_BASEADDR2,13,5
+
+#define   AFE_REG_AFE_REG_SPARE_BASEADDR3                        0x902000D4
+#define   AFE_REG_D2A_TD_RFFE_RF1_CAP_1P8                        AFE_REG_AFE_REG_SPARE_BASEADDR3,13,5
+
+#define   WB_DFE0_DFE_FB_AGC_BASEADDR                            0x90300498
+#define   WB_DFE0_DFE_FB_AGC_APPLY                               WB_DFE0_DFE_FB_AGC_BASEADDR,0,1
+
+#define   WB_DFE1_DFE_FB_AGC_BASEADDR                            0x90400498
+#define   WB_DFE1_DFE_FB_AGC_APPLY                               WB_DFE1_DFE_FB_AGC_BASEADDR,0,1
+
+#define   WB_DFE2_DFE_FB_AGC_BASEADDR                            0x90500498
+#define   WB_DFE2_DFE_FB_AGC_APPLY                               WB_DFE2_DFE_FB_AGC_BASEADDR,0,1
+
+#define   WB_DFE3_DFE_FB_AGC_BASEADDR                            0x90600498
+#define   WB_DFE3_DFE_FB_AGC_APPLY                               WB_DFE3_DFE_FB_AGC_BASEADDR,0,1
+
+#define   WDT_WD_INT_BASEADDR                                    0x8002000C
+#define   WDT_WD_INT_STATUS                                      WDT_WD_INT_BASEADDR,0,1
+
+#define   FSK_TX_FTM_BASEADDR                                    0x80090000
+#define   FSK_TX_FTM_OE                                          FSK_TX_FTM_BASEADDR,12,1
+#define   FSK_TX_FTM_TX_EN                                       FSK_TX_FTM_BASEADDR,10,1
+#define   FSK_TX_FTM_FORCE_CARRIER_ON                            FSK_TX_FTM_BASEADDR,1,1
+#define   FSK_TX_FTM_FORCE_MARK_SPACE                            FSK_TX_FTM_BASEADDR,0,1
+
+#define   FSK_TX_FTM_TX_CNT_BASEADDR                             0x80090018
+#define   FSK_TX_FTM_TX_CNT_INT                                  FSK_TX_FTM_TX_CNT_BASEADDR,8,4
+#define   FSK_TX_FTM_TX_INT_EN                                   FSK_TX_FTM_TX_CNT_BASEADDR,4,1
+#define   FSK_TX_FTM_TX_INT_SRC_SEL                              FSK_TX_FTM_TX_CNT_BASEADDR,0,2
+
+#define   AFE_REG_D2A_FSK_BIAS_BASEADDR                          0x90200040
+#define   AFE_REG_D2A_FSK_BIAS_EN                                AFE_REG_D2A_FSK_BIAS_BASEADDR,0,1
+#define   AFE_REG_D2A_FSK_TEST_EN                                AFE_REG_D2A_FSK_BIAS_BASEADDR,10,1
+#define   AFE_REG_D2A_FSK_TEST_MODE                              AFE_REG_D2A_FSK_BIAS_BASEADDR,11,4
+#define   AFE_REG_D2A_FSK_TERM_INT_EN                            AFE_REG_D2A_FSK_BIAS_BASEADDR,15,1
+#define   AFE_REG_D2A_FSK_RESETB_1P8                             AFE_REG_D2A_FSK_BIAS_BASEADDR,16,1
+#define   AFE_REG_D2A_FSK_REG_EN_1P8                             AFE_REG_D2A_FSK_BIAS_BASEADDR,17,1
+#define   AFE_REG_D2A_FSK_REG_EN_LKG_1P8                         AFE_REG_D2A_FSK_BIAS_BASEADDR,18,1
+#define   AFE_REG_D2A_FSK_REG_AMP_1P8                            AFE_REG_D2A_FSK_BIAS_BASEADDR,19,3
+#define   AFE_REG_D2A_FSK_REG_TEST_CTRL_1P8                      AFE_REG_D2A_FSK_BIAS_BASEADDR,22,2
+#define   AFE_REG_D2A_DSQ_RX_MODE                                AFE_REG_D2A_FSK_BIAS_BASEADDR,24,1
+#define   AFE_REG_D2A_DSQ_RX_EN                                  AFE_REG_D2A_FSK_BIAS_BASEADDR,25,1
+#define   AFE_REG_D2A_DSQ_HYST                                   AFE_REG_D2A_FSK_BIAS_BASEADDR,26,2
+#define   AFE_REG_D2A_DSQ_RESETB_1P8                             AFE_REG_D2A_FSK_BIAS_BASEADDR,28,1
+#define   AFE_REG_D2A_FSK_CLKRX_ENA                              AFE_REG_D2A_FSK_BIAS_BASEADDR,29,1
+
+#define   DMD_TEI_BASEADDR                                       0x3FFFEBE0
+#define   DMD_TEI_ENA                                            DMD_TEI_BASEADDR,0,1
+
+#define   xpt_shm_input_control0  0x90700270,0,8
+#define   xpt_shm_input_control1  0x90700270,8,8
+#define   xpt_shm_input_control2  0x90700270,16,8
+#define   xpt_shm_input_control3  0x90700270,24,8
+#define   xpt_shm_input_control4  0x90700274,0,8
+#define   xpt_shm_input_control5  0x90700274,8,8
+#define   xpt_shm_input_control6  0x90700274,16,8
+#define   xpt_shm_input_control7  0x90700274,24,8
+
+
+#define   xpt_shm_output_control0  0x90700278,0,8
+#define   xpt_shm_output_control1  0x90700278,8,8
+#define   xpt_shm_output_control2  0x90700278,16,8
+#define   xpt_shm_output_control3  0x90700278,24,8
+#define   xpt_shm_output_control4  0x9070027C,0,8
+#define   xpt_shm_output_control5  0x9070027C,8,8
+#define   xpt_shm_output_control6  0x9070027C,16,8
+#define   xpt_shm_output_control7  0x9070027C,24,8
+
+#define   xpt_mode_27mhz           0x90700184,0,1
+#define   xpt_enable_pcr_count     0x90700184,1,1
+
+#define   xcpu_ctrl_003c_reg       0x9072003C,0,4
 
 #ifdef __cplusplus
 }

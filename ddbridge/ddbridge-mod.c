@@ -721,7 +721,6 @@ static int mod_set_iq(struct ddb *dev, u32 steps, u32 chan, u32 freq)
 			j = i / fac;
 			ss = s >> s1;
 			/* round? ss = ((s >> (s1 - 1)) + 1) >> 1; */
-
 			iqtab[j] = iqtab[steps / 2 - j] = ss;
 			iqtab[steps / 2 + j] = iqtab[steps - j] = -ss;
 		}
@@ -822,7 +821,7 @@ static int mod_init(struct ddb *dev, u32 Frequency)
 		return -ENOMEM;
 	flash = (struct DDMOD_FLASH *) buffer;
 
-	ddbridge_flashread(dev, buffer, DDMOD_FLASH_START, 4096);
+	ddbridge_flashread(dev, 0, buffer, DDMOD_FLASH_START, 4096);
 
 	if (flash->Magic != DDMOD_FLASH_MAGIC && flash->Magic != 1) {
 		stat = -EINVAL;

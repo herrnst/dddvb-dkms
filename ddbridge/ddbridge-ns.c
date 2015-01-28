@@ -83,7 +83,7 @@ static int ns_alloc(struct dvbnss *nss)
 		if (dev->ns[i].input)
 			continue;
 		dev->ns[i].input = input;
-		dev->ns[i].fe = input->nr;
+		dev->ns[i].fe = input;
 		nss->priv = &dev->ns[i];
 		ret = 0;
 		/*pr_info("%s i=%d fe=%d\n", __func__, i, input->nr); */
@@ -171,7 +171,7 @@ static int citoport(struct ddb *dev, u8 ci)
 {
 	int i, j;
 
-	for (i = j = 0; i < dev->info->port_num; i++) {
+	for (i = j = 0; i < dev->link[0].info->port_num; i++) {
 		if (dev->port[i].class == DDB_PORT_CI) {
 			if (j == ci)
 				return i;
@@ -190,7 +190,7 @@ static int ns_set_ci(struct dvbnss *nss, u8 ci)
 	int ciport;
 
 	if (ci == 255) {
-		dns->fe = input->nr;
+		dns->fe = input;
 		return 0;
 	}
 	ciport = citoport(dev, ci);
@@ -200,7 +200,7 @@ static int ns_set_ci(struct dvbnss *nss, u8 ci)
 	ddbwritel(dev, (input->nr << 16) | 0x1c, TS_OUTPUT_CONTROL(ciport));
 	usleep_range(1, 5);
 	ddbwritel(dev, (input->nr << 16) | 0x1d, TS_OUTPUT_CONTROL(ciport));
-	dns->fe = dev->port[ciport].input[0]->nr;
+	dns->fe = dev->port[ciport].input[0];
 	return 0;
 }
 
@@ -276,7 +276,8 @@ static int ns_set_rtcp_msg(struct dvbnss *nss, u8 *msg, u32 len)
 	return 0;
 }
 
-static u32 set_nsbuf(struct dvb_ns_params *p, u8 *buf, u32 *udplen, int rtcp)
+static u32 set_nsbuf(struct dvb_ns_params *p, u8 *buf,
+		     u32 *udplen, int rtcp, int vlan)
 {
 	u32 c = 0;
 	u16 pcs;
@@ -408,10 +409,10 @@ static int ns_set_net(struct dvbnss *nss)
 	u32 off = STREAM_PACKET_ADR(dns->nr);
 	u32 coff = 96;
 
-	dns->ts_offset = set_nsbuf(p, dns->p, &dns->udplen, 0);
+	dns->ts_offset = set_nsbuf(p, dns->p, &dns->udplen, 0, dev->vlan);
 	if (nss->params.flags & DVB_NS_RTCP)
 		dns->rtcp_len = set_nsbuf(p, dns->p + coff,
-					  &dns->rtcp_udplen, 1);
+					  &dns->rtcp_udplen, 1, dev->vlan);
 	ddbcpyto(dev, off, dns->p, sizeof(dns->p));
 	ddbwritel(dev, dns->udplen | (STREAM_PACKET_OFF(dns->nr) << 16),
 		  STREAM_RTP_PACKET(dns->nr));
@@ -437,10 +438,12 @@ static int ns_start(struct dvbnss *nss)
 		reg |= 0x40;
 	if (nss->params.flags & DVB_NS_IPV6)
 		reg |= 0x80;
-	if (dns->fe != input->nr)
-		ddb_dvb_ns_input_start(&dev->input[dns->fe]);
+	if (dns->fe != input)
+		ddb_dvb_ns_input_start(dns->fe);
 	ddb_dvb_ns_input_start(input);
-	ddbwritel(dev, reg | (dns->fe << 8), STREAM_CONTROL(dns->nr));
+	//printk("ns start ns %u, fe %u link %u\n", dns->nr, dns->fe->nr, dns->fe->port->lnr);
+	ddbwritel(dev, reg | (dns->input->nr << 8) | (dns->fe->port->lnr << 16),
+		  STREAM_CONTROL(dns->nr));
 	return 0;
 }
 
@@ -453,8 +456,8 @@ static int ns_stop(struct dvbnss *nss)
 
 	ddbwritel(dev, 0x00, STREAM_CONTROL(dns->nr));
 	ddb_dvb_ns_input_stop(input);
-	if (dns->fe != input->nr)
-		ddb_dvb_ns_input_stop(&dev->input[dns->fe]);
+	if (dns->fe != input)
+		ddb_dvb_ns_input_stop(dns->fe);
 	return 0;
 }
 

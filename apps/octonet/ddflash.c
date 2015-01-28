@@ -618,12 +618,11 @@ static int check_fw(struct ddflash *ddf, char *fn, uint32_t *fw_off)
 	}
 	p++;
 	*fw_off = p;
-	
-	//printf("devid = %04x\n", devid);
-	//printf("version = %08x  %08x\n", version, ddf->id.hw);
-	//printf("length = %u\n", length);
-	//printf("fsize = %u, p = %u, f-p = %u\n", fsize, p, fsize - p);
-	if (devid == ddf->id.device && version <= ddf->id.hw)
+	printf("devid = %04x\n", devid);
+	printf("version = %08x  %08x\n", version, ddf->id.hw);
+	printf("length = %u\n", length);
+	printf("fsize = %u, p = %u, f-p = %u\n", fsize, p, fsize - p);
+	if (devid == ddf->id.device && version <= (ddf->id.hw & 0xffffff))
 		ret = -3; /* same id but no newer version */
 	
 out:

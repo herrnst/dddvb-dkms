@@ -316,6 +316,8 @@ struct dvb_frontend_ops {
 
 	int (*set_property)(struct dvb_frontend* fe, struct dtv_property* tvp);
 	int (*get_property)(struct dvb_frontend* fe, struct dtv_property* tvp);
+
+	u8 xbar[3];
 };
 
 #ifdef __DVB_CORE__

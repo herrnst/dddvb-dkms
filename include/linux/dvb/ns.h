@@ -19,10 +19,11 @@ struct dvb_ns_params {
 	__u8     ttl;
 };
 
-#define DVB_NS_IPV6    1
-#define DVB_NS_RTP     2
-#define DVB_NS_RTCP    4
-#define DVB_NS_RTP_TO  8
+#define DVB_NS_IPV6    0x01
+#define DVB_NS_RTP     0x02
+#define DVB_NS_RTCP    0x04
+#define DVB_NS_RTP_TO  0x08
+#define DVB_NS_VLAN    0x10
 
 struct dvb_ns_rtcp {
 	__u8    *msg;
