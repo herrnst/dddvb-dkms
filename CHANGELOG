@@ -1,3 +1,12 @@
+0.9.16 2014.12.19
+- support MAX S8 4/8 production card
+
+0.9.15a 2014.07.29
+- last minute fixes
+
+0.9.15 2014.06.24
+- support MAX S8 4/8 prototype
+
 0.9.14b 2014.04.24
 - fix fe read lockup in cxd2843
 

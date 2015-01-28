@@ -39,10 +39,10 @@
 
 #define USE_ALGO 1
 
-enum EDemodType { CXD2843, CXD2837, CXD2838 };
-enum EDemodState { Unknown, Shutdown, Sleep, ActiveT,
+enum demod_type { CXD2843, CXD2837, CXD2838 };
+enum demod_state { Unknown, Shutdown, Sleep, ActiveT,
 		   ActiveT2, ActiveC, ActiveC2, ActiveIT };
-enum ET2Profile { T2P_Base, T2P_Lite };
+enum t2_profile { T2P_Base, T2P_Lite };
 enum omode { OM_NONE, OM_DVBT, OM_DVBT2, OM_DVBC,
 	     OM_QAM_ITU_C, OM_DVBC2, OM_ISDBT };
 
@@ -57,9 +57,9 @@ struct cxd_state {
 	u8  adrx;
 	u8  curbankx;
 
-	enum EDemodType  type;
-	enum EDemodState state;
-	enum ET2Profile T2Profile;
+	enum demod_type  type;
+	enum demod_state state;
+	enum t2_profile T2Profile;
 	enum omode omode;
 
 	u8    IF_FS;
@@ -390,11 +390,13 @@ static void ActiveC2_to_Sleep(struct cxd_state *state)
 	writebitst(state, 0x25, 0x6A, 0x02, 0x03);
 	{
 		static u8 data[3] = { 0x07, 0x61, 0x36 };
+
 		writeregst(state, 0x25, 0x89, data, sizeof(data));
 	}
 	writebitst(state, 0x25, 0xCB, 0x05, 0x07);
 	{
 		static u8 data[4] = { 0x2E, 0xE0, 0x2E, 0xE0 };
+
 		writeregst(state, 0x25, 0xDC, data, sizeof(data));
 	}
 	writeregt(state, 0x25, 0xE2, 0x2F);
@@ -408,6 +410,7 @@ static void ActiveC2_to_Sleep(struct cxd_state *state)
 	writebitst(state, 0x2B, 0x2B, 0x00, 0x1F);
 	{
 		u8 data[2] = { 0x75, 0x75 };
+
 		writeregst(state, 0x2D, 0x24, data, sizeof(data));
 	}
 
@@ -421,7 +424,7 @@ static void ActiveC2_to_Sleep(struct cxd_state *state)
 }
 
 static int ConfigureTS(struct cxd_state *state,
-		       enum EDemodState newDemodState)
+		       enum demod_state newDemodState)
 {
 	int status = 0;
 	u8 OSERCKMODE = state->SerialMode ?  1 : 0;
@@ -525,6 +528,7 @@ static void Sleep_to_ActiveT(struct cxd_state *state, u32 iffreq)
 	{
 		u8 data[2] = { 0x09, 0x54 };  /* 20.5 MHz */
 		/*u8 data[2] = { 0x0A, 0xD4 }; */  /* 41 MHz */
+
 		writeregst(state, 0x00, 0x43, data, 2);   /* Enable ADC 2+3 */
 	}
 	writeregx(state, 0x00, 0x18, 0x00);   /* Enable ADC 4 */
@@ -559,6 +563,7 @@ static void BandSettingT2(struct cxd_state *state, u32 iffreq)
 	case 8:
 	{
 		u8 TR_data[] = { 0x11, 0xF0, 0x00, 0x00, 0x00 };
+
 		/* Timing recovery */
 		writeregst(state, 0x20, 0x9F, TR_data, sizeof(TR_data));
 		/* Add EQ Optimisation for tuner here */
@@ -570,6 +575,7 @@ static void BandSettingT2(struct cxd_state *state, u32 iffreq)
 	case 7:
 	{
 		u8 TR_data[] = { 0x14, 0x80, 0x00, 0x00, 0x00 };
+
 		writeregst(state, 0x20, 0x9F, TR_data, sizeof(TR_data));
 		writeregst(state, 0x10, 0xB6, IF_data, sizeof(IF_data));
 		writebitst(state, 0x10, 0xD7, 0x02, 0x07);
@@ -578,6 +584,7 @@ static void BandSettingT2(struct cxd_state *state, u32 iffreq)
 	case 6:
 	{
 		u8 TR_data[] = { 0x17, 0xEA, 0xAA, 0xAA, 0xAA };
+
 		writeregst(state, 0x20, 0x9F, TR_data, sizeof(TR_data));
 		writeregst(state, 0x10, 0xB6, IF_data, sizeof(IF_data));
 		writebitst(state, 0x10, 0xD7, 0x04, 0x07);
@@ -586,6 +593,7 @@ static void BandSettingT2(struct cxd_state *state, u32 iffreq)
 	case 5:
 	{
 		u8 TR_data[] = { 0x1C, 0xB3, 0x33, 0x33, 0x33 };
+
 		writeregst(state, 0x20, 0x9F, TR_data, sizeof(TR_data));
 		writeregst(state, 0x10, 0xB6, IF_data, sizeof(IF_data));
 		writebitst(state, 0x10, 0xD7, 0x06, 0x07);
@@ -594,6 +602,7 @@ static void BandSettingT2(struct cxd_state *state, u32 iffreq)
 	case 2: /* 1.7 MHz */
 	{
 		u8 TR_data[] = { 0x58, 0xE2, 0xAF, 0xE0, 0xBC };
+
 		writeregst(state, 0x20, 0x9F, TR_data, sizeof(TR_data));
 		writeregst(state, 0x10, 0xB6, IF_data, sizeof(IF_data));
 		writebitst(state, 0x10, 0xD7, 0x03, 0x07);
@@ -616,6 +625,7 @@ static void Sleep_to_ActiveT2(struct cxd_state *state, u32 iffreq)
 	{
 		u8 data[2] = { 0x09, 0x54 };  /* 20.5 MHz */
 		/*u8 data[2] = { 0x0A, 0xD4 }; */  /* 41 MHz */
+
 		writeregst(state, 0x00, 0x43, data, 2);   /* Enable ADC 2+3 */
 	}
 	writeregx(state, 0x00, 0x18, 0x00);   /* Enable ADC 4 */
@@ -667,6 +677,7 @@ static void Sleep_to_ActiveC(struct cxd_state *state, u32 iffreq)
 	{
 		u8 data[2] = { 0x09, 0x54 };  /* 20.5 MHz */
 		/*u8 data[2] = { 0x0A, 0xD4 }; */  /* 41 MHz */
+
 		writeregst(state, 0x00, 0x43, data, 2);   /* Enable ADC 2+3 */
 	}
 	writeregx(state, 0x00, 0x18, 0x00);   /* Enable ADC 4 */
@@ -737,6 +748,7 @@ static void Sleep_to_ActiveC2(struct cxd_state *state, u32 iffreq)
 	{
 		u8 data[2] = { 0x09, 0x54 };  /* 20.5 MHz */
 		/*u8 data[2] = { 0x0A, 0xD4 }; */  /* 41 MHz */
+
 		writeregst(state, 0x00, 0x43, data, sizeof(data));
 		/* Enable ADC 2+3 */
 	}
@@ -753,11 +765,13 @@ static void Sleep_to_ActiveC2(struct cxd_state *state, u32 iffreq)
 	writebitst(state, 0x25, 0x6A, 0x00, 0x03);
 	{
 		u8 data[3] = { 0x0C, 0xD1, 0x40 };
+
 		writeregst(state, 0x25, 0x89, data, sizeof(data));
 	}
 	writebitst(state, 0x25, 0xCB, 0x01, 0x07);
 	{
 		u8 data[4] = { 0x7B, 0x00, 0x7B, 0x00 };
+
 		writeregst(state, 0x25, 0xDC, data, sizeof(data));
 	}
 	writeregt(state, 0x25, 0xE2, 0x30);
@@ -771,6 +785,7 @@ static void Sleep_to_ActiveC2(struct cxd_state *state, u32 iffreq)
 	writebitst(state, 0x2B, 0x2B, 0x10, 0x1F);
 	{
 		u8 data[2] = { 0x01, 0x01 };
+
 		writeregst(state, 0x2D, 0x24, data, sizeof(data));
 	}
 
@@ -853,6 +868,7 @@ static void Sleep_to_ActiveIT(struct cxd_state *state, u32 iffreq)
 	{
 		u8 data[2] = { 0x09, 0x54 };  /* 20.5 MHz, 24 MHz */
 		/*u8 data[2] = { 0x0A, 0xD4 }; */  /* 41 MHz */
+
 		writeregst(state, 0x00, 0x43, data, 2);   /* Enable ADC 2+3 */
 	}
 	writeregx(state, 0x00, 0x18, 0x00);   /* Enable ADC 4 */
@@ -898,6 +914,7 @@ static void C2_ReleasePreset(struct cxd_state *state)
 {
 	{
 		static u8 data[2] = { 0x02, 0x80};
+
 		writeregst(state, 0x27, 0xF4, data, sizeof(data));
 	}
 	writebitst(state, 0x27, 0x51, 0x40, 0xF0);
@@ -907,9 +924,11 @@ static void C2_ReleasePreset(struct cxd_state *state)
 	writebitst(state, 0x27, 0x76, 0x19, 0x3F);
 	if (state->bw == 6) {
 		static u8 data[5] = { 0x17, 0xEA, 0xAA, 0xAA, 0xAA};
+
 		writeregst(state, 0x20, 0x9F, data, sizeof(data));
 	} else {
 		static u8 data[5] = { 0x11, 0xF0, 0x00, 0x00, 0x00};
+
 		writeregst(state, 0x20, 0x9F, data, sizeof(data));
 	}
 	writebitst(state, 0x27, 0xC9, 0x07, 0x07);
@@ -917,10 +936,12 @@ static void C2_ReleasePreset(struct cxd_state *state)
 	{
 		static u8 data[10] = { 0x16, 0xF0, 0x2B, 0xD8,
 				       0x16, 0x16, 0xF0, 0x2C, 0xD8, 0x16 };
+
 		writeregst(state, 0x2A, 0x20, data, sizeof(data));
 	}
 	{
 		static u8 data[4] = { 0x00, 0x00, 0x00, 0x00 };
+
 		writeregst(state, 0x50, 0x6B, data, sizeof(data));
 	}
 	writebitst(state, 0x50, 0x6F, 0x00, 0x40); /* Disable Preset */
@@ -990,7 +1011,7 @@ static void release(struct dvb_frontend *fe)
 
 static int Start(struct cxd_state *state, u32 IntermediateFrequency)
 {
-	enum EDemodState newDemodState = Unknown;
+	enum demod_state newDemodState = Unknown;
 	u32 iffreq;
 
 	if (state->state < Sleep)
@@ -1222,7 +1243,6 @@ static void init_state(struct cxd_state *state, struct cxd2843_cfg *cfg)
 	state->SerialClockFrequency =
 		(cfg->ts_clock >= 1 && cfg->ts_clock <= 5) ?
 		cfg->ts_clock :  1; /* 1 = fastest (82 MBit/s), 5 = slowest */
-	state->SerialClockFrequency = 1;
 	/* IF Fullscale 0x50 = 1.4V, 0x39 = 1V, 0x28 = 0.7V */
 	state->IF_FS = 0x50;
 }
@@ -1868,6 +1888,7 @@ static struct dvb_frontend_ops common_ops_2843 = {
 			/* DVB-T */
 			FE_CAN_QAM_16 | FE_CAN_QAM_64 | FE_CAN_QAM_AUTO |
 			FE_CAN_FEC_1_2 | FE_CAN_FEC_2_3 | FE_CAN_FEC_3_4 |
+			FE_CAN_FEC_4_5 |
 			FE_CAN_FEC_5_6 | FE_CAN_FEC_7_8 | FE_CAN_FEC_AUTO |
 			FE_CAN_TRANSMISSION_MODE_AUTO |
 			FE_CAN_GUARD_INTERVAL_AUTO | FE_CAN_HIERARCHY_AUTO |
@@ -1907,6 +1928,7 @@ static struct dvb_frontend_ops common_ops_2837 = {
 			/* DVB-T */
 			FE_CAN_QAM_16 | FE_CAN_QAM_64 | FE_CAN_QAM_AUTO |
 			FE_CAN_FEC_1_2 | FE_CAN_FEC_2_3 | FE_CAN_FEC_3_4 |
+			FE_CAN_FEC_4_5 |
 			FE_CAN_FEC_5_6 | FE_CAN_FEC_7_8 | FE_CAN_FEC_AUTO |
 			FE_CAN_TRANSMISSION_MODE_AUTO |
 			FE_CAN_GUARD_INTERVAL_AUTO | FE_CAN_HIERARCHY_AUTO |
@@ -1941,6 +1963,7 @@ static struct dvb_frontend_ops common_ops_2838 = {
 		.symbol_rate_max = 11700000,
 		.caps = FE_CAN_QAM_16 | FE_CAN_QAM_64 | FE_CAN_QAM_AUTO |
 			FE_CAN_FEC_1_2 | FE_CAN_FEC_2_3 | FE_CAN_FEC_3_4 |
+			FE_CAN_FEC_4_5 |
 			FE_CAN_FEC_5_6 | FE_CAN_FEC_7_8 | FE_CAN_FEC_AUTO |
 			FE_CAN_TRANSMISSION_MODE_AUTO |
 			FE_CAN_GUARD_INTERVAL_AUTO | FE_CAN_HIERARCHY_AUTO |

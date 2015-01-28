@@ -65,6 +65,7 @@ static int lnbh25_set_voltage(struct dvb_frontend *fe,
 			      fe_sec_voltage_t voltage)
 {
 	struct lnbh25 *lnbh = (struct lnbh25 *) fe->sec_priv;
+	u8 oldreg0 = lnbh->reg[0];
 
 	switch (voltage) {
 	case SEC_VOLTAGE_OFF:
@@ -90,7 +91,10 @@ static int lnbh25_set_voltage(struct dvb_frontend *fe,
 		lnbh25_write_regs(lnbh, 2, 2);
 	}
 	lnbh->reg[1] |= 0x01;
-	return lnbh25_write_regs(lnbh, 0, 3);
+	lnbh25_write_regs(lnbh, 0, 3);
+	if (oldreg0 == 0) 
+		msleep(100);
+	return 0;
 }
 
 static int lnbh25_enable_high_lnb_voltage(struct dvb_frontend *fe, long arg)

@@ -445,6 +445,8 @@ int main(int argc, char **argv)
 		type = 0;
 	if (ddbid.device == 0x07)
 		type = 4;
+	if (ddbid.device == 0x320)
+		type = 5;
 	
 	if (!SectorSize)
 		return 0;
@@ -508,9 +510,6 @@ int main(int argc, char **argv)
 			printf("Octopus 4/8\n");
 			break;
 		}
-		//fname="DVBNetPCIeV1A_DVBNetPCIeV1A.bit";
-		//fname="DVBNetV1A_DVBNetV1A.bit";
-		
 		fh = open(fname, O_RDONLY);
 		if (fh < 0 ) {
 			printf("File not found \n");

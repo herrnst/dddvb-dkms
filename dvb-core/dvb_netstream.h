@@ -43,17 +43,17 @@
 #define DVBNS_MAXPIDS 32
 
 struct dvbnss {
-	struct dvb_netstream *ns; 
+	struct dvb_netstream *ns;
 	void *priv;
 
 	u8  pids[1024];
 	u8  packet[1328];
 	u32 pp;
-	
+
 	struct socket *sock;
 	struct sockaddr_in sadr;
 	u32    sn;
-	
+
 	struct dvb_ns_params params;
 
 	struct list_head nssl;
@@ -64,7 +64,7 @@ struct dvbnss {
 
 struct dvb_netstream {
 	void              *priv;
-	
+
 	struct mutex       mutex;
 	spinlock_t         lock;
 	struct dvb_device *dvbdev;
@@ -72,18 +72,17 @@ struct dvb_netstream {
 
 	struct list_head nssl;
 
-	int (*set_net) (struct dvbnss *);
-	int (*set_pid) (struct dvbnss *, u16);
-	int (*set_pids) (struct dvbnss *);
-	int (*set_ci) (struct dvbnss *, u8);
-	int (*set_rtcp_msg) (struct dvbnss *, u8 *, u32);
-	int (*set_ts_packets) (struct dvbnss *, u8 *, u32);
-	int (*insert_ts_packets) (struct dvbnss *, u8);
-	int (*start) (struct dvbnss *);
-	int (*stop) (struct dvbnss *);
-	int (*alloc) (struct dvbnss *);
-	void (*free) (struct dvbnss *);
-
+	int (*set_net)(struct dvbnss *);
+	int (*set_pid)(struct dvbnss *, u16);
+	int (*set_pids)(struct dvbnss *);
+	int (*set_ci)(struct dvbnss *, u8);
+	int (*set_rtcp_msg)(struct dvbnss *, u8 *, u32);
+	int (*set_ts_packets)(struct dvbnss *, u8 *, u32);
+	int (*insert_ts_packets)(struct dvbnss *, u8);
+	int (*start)(struct dvbnss *);
+	int (*stop)(struct dvbnss *);
+	int (*alloc)(struct dvbnss *);
+	void (*free)(struct dvbnss *);
 };
 
 

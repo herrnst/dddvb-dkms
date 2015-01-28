@@ -56,12 +56,14 @@ inline s64 NegConvertPCR(s64 a)
 inline s64 RoundPCR(s64 a)
 {
 	s64 b = a + (HW_LSB_MASK>>1);
+
 	return b & ~(HW_LSB_MASK - 1);
 }
 
 inline s64 RoundPCRUp(s64 a)
 {
 	s64 b = a + (HW_LSB_MASK - 1);
+
 	return b & ~(HW_LSB_MASK - 1);
 }
 
@@ -365,6 +367,7 @@ static int mod_set_si598(struct ddb *dev, u32 freq)
 		HSDiv = Div;
 	} else {
 		int retry = 100;
+
 		while (retry > 0) {
 			N = 0;
 			HSDiv = Div;
@@ -702,7 +705,7 @@ static int mod_set_iq(struct ddb *dev, u32 steps, u32 chan, u32 freq)
 	u32 s1 = 22, s2 = 33;
 	u64 amp = (1ULL << 17) - 1ULL;
 	u64 s = 0, c = (amp << s1), ss;
-	u64 frq = 0xC90FDAA22168C234ULL;
+	u64 frq = 0xC90FDAA22168C235ULL; /* PI << 62 */
 	u32 *iqtab;
 	u32 iqtabadr;
 	u32 regval;
@@ -717,7 +720,7 @@ static int mod_set_iq(struct ddb *dev, u32 steps, u32 chan, u32 freq)
 		if (!(i & (fac - 1))) {
 			j = i / fac;
 			ss = s >> s1;
-			/*round? ss = ((s >> (s1 - 1)) + 1) >> 1; */
+			/* round? ss = ((s >> (s1 - 1)) + 1) >> 1; */
 
 			iqtab[j] = iqtab[steps / 2 - j] = ss;
 			iqtab[steps / 2 + j] = iqtab[steps - j] = -ss;
@@ -757,7 +760,7 @@ static int mod_set_modulation(struct ddb *dev, int chan, enum fe_modulation mod)
 	if (mod > QAM_256 || mod < QAM_16)
 		return -EINVAL;
 	dev->mod[chan].modulation = mod;
-	dev->mod[chan].obitrate = 0x0061072787900000 * (mod + 3);
+	dev->mod[chan].obitrate = 0x0061072787900000ULL * (mod + 3);
 	dev->mod[chan].ibitrate = dev->mod[chan].obitrate;
 	ddbwritel(dev, qamtab[mod], CHANNEL_SETTINGS(chan));
 	return 0;
@@ -896,7 +899,6 @@ fail:
 /*
   double Increment =  FACTOR*PACKET_CLOCKS/double(m_OutputBitrate);
   double Decrement =  FACTOR*PACKET_CLOCKS/double(m_InputBitrate);
-  
   27000000 * 1504 * 2^22 / (6900000 * 188 / 204) = 26785190066.1
 */
 
@@ -958,9 +960,10 @@ void ddbridge_mod_rate_handler(unsigned long data)
 		if (mod->StateCounter) {
 			if (mod->StateCounter == 1) {
 				if (mod->ibitrate == 0) {
-					mul = (0x1000000 * (u64) (OutPacketDiff -
-								  InPacketDiff -
-								  InPacketDiff/1000));
+					mul = (0x1000000 *
+					       (u64) (OutPacketDiff -
+						      InPacketDiff -
+						      InPacketDiff/1000));
 					if (OutPacketDiff)
 						mod->rate_inc =
 							div_u64(mul, OutPacketDiff);

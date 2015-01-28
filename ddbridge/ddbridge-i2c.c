@@ -22,6 +22,16 @@
  * Or, point your browser to http://www.gnu.org/copyleft/gpl.html
  */
 
+static int i2c_io(struct i2c_adapter *adapter, u8 adr,
+		  u8 *wbuf, u32 wlen, u8 *rbuf, u32 rlen)
+{
+	struct i2c_msg msgs[2] = {{.addr = adr,  .flags = 0,
+				   .buf  = wbuf, .len   = wlen },
+				  {.addr = adr,  .flags = I2C_M_RD,
+				   .buf  = rbuf,  .len   = rlen } };
+	return (i2c_transfer(adapter, msgs, 2) == 2) ? 0 : -1;
+}
+
 static int i2c_write(struct i2c_adapter *adap, u8 adr, u8 *data, int len)
 {
 	struct i2c_msg msg = {.addr = adr, .flags = 0,
@@ -108,6 +118,7 @@ static int ddb_i2c_cmd(struct ddb_i2c *i2c, u32 adr, u32 cmd)
 #ifdef CONFIG_PCI_MSI
 		{ /* MSI debugging*/
 			u32 istat = ddbreadl(dev, INTERRUPT_STATUS);
+
 			dev_err(dev->dev, "DDBridge IRS %08x\n", istat);
 			ddbwritel(dev, istat, INTERRUPT_ACK);
 		}
@@ -129,8 +140,12 @@ static int ddb_i2c_master_xfer(struct i2c_adapter *adapter,
 
 	if (num)
 		addr = msg[0].addr;
+	if (msg[0].len > I2C_BUF_SIZE)
+		return -EIO;
 	if (num == 2 && msg[1].flags & I2C_M_RD &&
 	    !(msg[0].flags & I2C_M_RD)) {
+		if (msg[1].len > I2C_BUF_SIZE)
+			return -EIO;
 		memcpy_toio(dev->regs + I2C_TASKMEM_BASE + i2c->wbuf,
 			    msg[0].buf, msg[0].len);
 		ddbwritel(dev, msg[0].len|(msg[1].len << 16),
@@ -161,27 +176,9 @@ static int ddb_i2c_master_xfer(struct i2c_adapter *adapter,
 	return -EIO;
 }
 
-#if 0
-static int ddb_i2c_master_xfer(struct i2c_adapter *adapter,
-			       struct i2c_msg msg[], int num)
-{
-	struct ddb_i2c *i2c = (struct ddb_i2c *) i2c_get_adapdata(adapter);
-	struct ddb *dev = i2c->dev;
-	int ret;
-
-	if (dev->info->type != DDB_OCTONET || i2c->nr == 0 || i2c->nr == 3)
-		return ddb_i2c_master_xfer_locked(adapter, msg, num);
-
-	mutex_lock(&dev->octonet_i2c_lock);
-	ret = ddb_i2c_master_xfer_locked(adapter, msg, num);
-	mutex_unlock(&dev->octonet_i2c_lock);
-	return ret;
-}
-#endif
-
 static u32 ddb_i2c_functionality(struct i2c_adapter *adap)
 {
-	return I2C_FUNC_SMBUS_EMUL;
+	return I2C_FUNC_I2C | I2C_FUNC_SMBUS_EMUL;
 }
 
 struct i2c_algorithm ddb_i2c_algo = {
@@ -221,9 +218,13 @@ static int ddb_i2c_init(struct ddb *dev)
 		dev->handler_data[i] = (unsigned long) i2c;
 		i2c->dev = dev;
 		i2c->nr = i;
-		i2c->wbuf = i * (I2C_TASKMEM_SIZE / 4);
-		i2c->rbuf = i2c->wbuf + (I2C_TASKMEM_SIZE / 8);
-		i2c->regs = 0x80 + i * 0x20;
+		i2c->wbuf = i * (I2C_BUF_SIZE * 2);
+		i2c->rbuf = i2c->wbuf + I2C_BUF_SIZE;
+		if (dev->info->regmap && dev->info->regmap->i2c)
+			i2c->regs = dev->info->regmap->i2c->base +
+				dev->info->regmap->i2c->size * i;
+		else
+			i2c->regs = I2C_BASE + i * 0x20;
 		ddbwritel(dev, I2C_SPEED_100, i2c->regs + I2C_TIMING);
 		ddbwritel(dev, (i2c->rbuf << 16) | i2c->wbuf,
 			  i2c->regs + I2C_TASKADDRESS);

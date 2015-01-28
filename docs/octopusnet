@@ -70,7 +70,7 @@ and the bootstrap code which loads u-boot also does not contain error correction
 0x000a0000 - 0x000bffff G45 u-boot environment
 0x000c0000 - 0x000dffff G45 u-boot redundant environment
 0x000e0000 - 0x000fffff spare
-0x00100000 - 0x001fffff G45 Linux recovery
+0x00100000 - 0x01ffffff G45 Linux recovery
 0x02000000 - 0x0fffffff Linux UBI
 
 

@@ -64,6 +64,7 @@
 #include <linux/crc32.h>
 #include <linux/mutex.h>
 #include <linux/sched.h>
+#include <linux/version.h>
 
 #include "dvb_demux.h"
 #include "dvb_net.h"
@@ -1278,7 +1279,11 @@ static int dvb_net_add_if(struct dvb_net *dvbnet, u16 pid, u8 feedtype)
 	if ((if_num = get_if(dvbnet)) < 0)
 		return -EINVAL;
 
-	net = alloc_netdev(sizeof(struct dvb_net_priv), "dvb", dvb_net_setup);
+	net = alloc_netdev(sizeof(struct dvb_net_priv), "dvb", 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 17, 0)
+                           NET_NAME_UNKNOWN,
+#endif
+			   dvb_net_setup);
 	if (!net)
 		return -ENOMEM;
 

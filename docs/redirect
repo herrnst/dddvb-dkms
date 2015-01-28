@@ -1,3 +1,9 @@
+NOTE: This is an unsupported hack so that legacy software works
+      with the hardware!
+      To properly pass data through a CI CAM you should read
+      the TS from a dvr device and write it to a ci device
+      in user space!
+
 Redirection of TS streams through CI modules is now supported 
 through /sys/class/ddbridge/ddbridge0/redirect.
 It only works with cards based on the ddbridge PCIe bridge, not

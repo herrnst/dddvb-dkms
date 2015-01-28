@@ -32,8 +32,6 @@ module_param(adapter_alloc, int, 0444);
 MODULE_PARM_DESC(adapter_alloc,
 "0-one adapter per io, 1-one per tab with io, 2-one per tab, 3-one for all");
 
-#define DVB_NSD
-
 #include "ddbridge-core.c"
 
 static struct ddb_info ddb_octonet = {
@@ -43,6 +41,25 @@ static struct ddb_info ddb_octonet = {
 	.i2c_num  = 4,
 	.ns_num   = 12,
 	.mdio_num = 1,
+};
+
+static struct ddb_info ddb_octonet_jse = {
+	.type     = DDB_OCTONET,
+	.name     = "Digital Devices OctopusNet network DVB adapter JSE",
+	.port_num = 4,
+	.i2c_num  = 4,
+	.ns_num   = 15,
+	.mdio_num = 1,
+};
+
+static struct ddb_info ddb_octonet_ser = {
+	.type     = DDB_OCTONET,
+	.name     = "Digital Devices OctopusNet",
+};
+
+static struct ddb_info ddb_octonet_tbd = {
+	.type     = DDB_OCTONET,
+	.name     = "Digital Devices OctopusNet",
 };
 
 static void octonet_unmap(struct ddb *dev)
@@ -55,9 +72,9 @@ static void octonet_unmap(struct ddb *dev)
 static int __exit octonet_remove(struct platform_device *pdev)
 {
 	struct ddb *dev;
-	
+
 	dev = platform_get_drvdata(pdev);
-	
+
 	ddb_nsd_detach(dev);
 	ddb_ports_detach(dev);
 	ddb_i2c_release(dev);
@@ -85,7 +102,6 @@ static int __init octonet_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, dev);
 	dev->dev = &pdev->dev;
 	dev->pfdev = pdev;
-	dev->info = &ddb_octonet;
 
 	mutex_init(&dev->mutex);
 	regs = platform_get_resource(dev->pfdev, IORESOURCE_MEM, 0);
@@ -110,6 +126,15 @@ static int __init octonet_probe(struct platform_device *pdev)
 	dev->ids.subvendor = dev->ids.devid & 0xffff;
 	dev->ids.subdevice = dev->ids.devid >> 16;
 
+	if (dev->ids.devid == 0x0300dd01)
+		dev->info = &ddb_octonet;
+	else if (dev->ids.devid == 0x0301dd01)
+		dev->info = &ddb_octonet_jse;
+	else if (dev->ids.devid == 0x0307dd01)
+		dev->info = &ddb_octonet_ser;
+	else
+		dev->info = &ddb_octonet_tbd;
+	
 	pr_info("HW  %08x REGMAP %08x\n", dev->ids.hwid, dev->ids.regmapid);
 	pr_info("MAC %08x DEVID  %08x\n", dev->ids.mac, dev->ids.devid);
 
@@ -119,7 +144,7 @@ static int __init octonet_probe(struct platform_device *pdev)
 	for (i = 0; i < 16; i++)
 		ddbwritel(dev, 0x00, TS_OUTPUT_CONTROL(i));
 	usleep_range(5000, 6000);
-	
+
 	if (request_irq(platform_get_irq(dev->pfdev, 0), irq_handler,
 			IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
 			"octonet-dvb", (void *) dev) < 0)
@@ -130,7 +155,6 @@ static int __init octonet_probe(struct platform_device *pdev)
 	ddbwritel(dev, 14 + (vlan ? 4 : 0), ETHER_LENGTH);
 
 
-	mutex_init(&dev->octonet_i2c_lock);
 	if (ddb_i2c_init(dev) < 0)
 		goto fail1;
 
@@ -194,6 +218,6 @@ module_init(init_octonet);
 module_exit(exit_octonet);
 
 MODULE_DESCRIPTION("GPL");
-MODULE_AUTHOR("Marcus and Ralph Metzler, Metzler Brothers Systementwicklung");
+MODULE_AUTHOR("Marcus and Ralph Metzler, Metzler Brothers Systementwicklung GbR");
 MODULE_LICENSE("GPL");
 MODULE_VERSION("0.5");

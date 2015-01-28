@@ -3,8 +3,8 @@
  *
  * Copyright (C) 2014 Digital Devices GmbH
  *
- * based on code: 
- * Copyright (c) 2011-2013 MaxLinear, Inc. All rights reserved 
+ * based on code:
+ * Copyright (c) 2011-2013 MaxLinear, Inc. All rights reserved
  + released under GPL V2
  *
  * This program is free software; you can redistribute it and/or
@@ -35,6 +35,7 @@
 #include <linux/i2c.h>
 #include <linux/version.h>
 #include <linux/mutex.h>
+#include <linux/vmalloc.h>
 #include <asm/div64.h>
 #include <asm/unaligned.h>
 
@@ -44,7 +45,7 @@
 #include "mxl5xx_defs.h"
 
 u8 hydra_fw[] = {
-//#include "mxl5xx_fw.h"
+/* #include "mxl5xx_fw.h" */
 };
 
 #define BYTE0(v) ((v >>  0) & 0xff)
@@ -66,7 +67,7 @@ struct mxl_base {
 
 	struct mutex         i2c_lock;
 	struct mutex         status_lock;
-	u8                   buf[MXL_HYDRA_OEM_MAX_CMD_BUFF_LEN]; 
+	u8                   buf[MXL_HYDRA_OEM_MAX_CMD_BUFF_LEN];
 
 	u32                  cmd_size;
 	u8                   cmd_data[MAX_CMD_DATA];
@@ -92,14 +93,14 @@ static void le32_to_cpusn(u32 *data, u32 size)
 static void convert_endian(u8 flag, u32 size, u8 *d)
 {
 	u32 i;
-	
+
 	if (!flag)
 		return;
 	for (i = 0; i < (size & ~3); i += 4) {
 		d[i + 0] ^= d[i + 3];
 		d[i + 3] ^= d[i + 0];
 		d[i + 0] ^= d[i + 3];
-		
+
 		d[i + 1] ^= d[i + 2];
 		d[i + 2] ^= d[i + 1];
 		d[i + 1] ^= d[i + 2];
@@ -120,7 +121,7 @@ static int i2c_read(struct i2c_adapter *adap, u8 adr,
 {
 	struct i2c_msg msg = {.addr = adr, .flags = I2C_M_RD,
 			      .buf = data, .len = len};
-	
+
 	return (i2c_transfer(adap, &msg, 1) == 1) ? 0 : -1;
 }
 
@@ -158,7 +159,6 @@ static int write_register(struct mxl *state, u32 reg, u32 val)
 		GET_BYTE(val, 2), GET_BYTE(val, 3),
 #endif
 	};
-	
 	mutex_lock(&state->base->i2c_lock);
 	stat = i2cwrite(state, data, sizeof(data));
 	mutex_unlock(&state->base->i2c_lock);
@@ -171,7 +171,7 @@ static int write_register_block(struct mxl *state, u32 reg, u32 size, u8 *data)
 {
 	int stat;
 	u8 *buf = state->base->buf;
-	
+
 	mutex_lock(&state->base->i2c_lock);
 
 	buf[0] = MXL_HYDRA_PLID_REG_WRITE;
@@ -181,10 +181,10 @@ static int write_register_block(struct mxl *state, u32 reg, u32 size, u8 *data)
 	buf[4] = GET_BYTE(reg, 2);
 	buf[5] = GET_BYTE(reg, 3);
 	memcpy(&buf[6], data, size);
-	
+
 	convert_endian(MXL_ENABLE_BIG_ENDIAN, size, &buf[6]);
-	stat = i2cwrite(state, buf, 
-			MXL_HYDRA_I2C_HDR_SIZE + 
+	stat = i2cwrite(state, buf,
+			MXL_HYDRA_I2C_HDR_SIZE +
 			MXL_HYDRA_REG_SIZE_IN_BYTES + size);
 	mutex_unlock(&state->base->i2c_lock);
 	return stat;
@@ -195,7 +195,7 @@ static int write_firmware_block(struct mxl *state,
 {
 	int stat;
 	u8 *buf = state->base->buf;
-	
+
 	mutex_lock(&state->base->i2c_lock);
 	buf[0] = MXL_HYDRA_PLID_REG_WRITE;
 	buf[1] = size + 4;
@@ -204,8 +204,8 @@ static int write_firmware_block(struct mxl *state,
 	buf[4] = GET_BYTE(reg, 2);
 	buf[5] = GET_BYTE(reg, 3);
 	memcpy(&buf[6], regDataPtr, size);
-	stat = i2cwrite(state, buf, 
-			MXL_HYDRA_I2C_HDR_SIZE + 
+	stat = i2cwrite(state, buf,
+			MXL_HYDRA_I2C_HDR_SIZE +
 			MXL_HYDRA_REG_SIZE_IN_BYTES + size);
 	mutex_unlock(&state->base->i2c_lock);
 	if (stat)
@@ -221,9 +221,9 @@ static int read_register(struct mxl *state, u32 reg, u32 *val)
 		GET_BYTE(reg, 0), GET_BYTE(reg, 1),
 		GET_BYTE(reg, 2), GET_BYTE(reg, 3),
 	};
-	
+
 	mutex_lock(&state->base->i2c_lock);
-	stat = i2cwrite(state, data, 
+	stat = i2cwrite(state, data,
 			MXL_HYDRA_REG_SIZE_IN_BYTES + MXL_HYDRA_I2C_HDR_SIZE);
 	if (stat)
 		pr_err("i2c read error 1\n");
@@ -233,7 +233,6 @@ static int read_register(struct mxl *state, u32 reg, u32 *val)
 	le32_to_cpus(val);
 	if (stat)
 		pr_err("i2c read error 2\n");
-	//pr_info("[%08x] = %08x\n", reg, *val);
 	return stat;
 }
 
@@ -241,7 +240,7 @@ static int read_register_block(struct mxl *state, u32 reg, u32 size, u8 *data)
 {
 	int stat;
 	u8 *buf = state->base->buf;
-		
+
 	mutex_lock(&state->base->i2c_lock);
 
 	buf[0] = MXL_HYDRA_PLID_REG_READ;
@@ -250,7 +249,7 @@ static int read_register_block(struct mxl *state, u32 reg, u32 size, u8 *data)
 	buf[3] = GET_BYTE(reg, 1);
 	buf[4] = GET_BYTE(reg, 2);
 	buf[5] = GET_BYTE(reg, 3);
-	stat = i2cwrite(state, buf, 
+	stat = i2cwrite(state, buf,
 			MXL_HYDRA_I2C_HDR_SIZE + MXL_HYDRA_REG_SIZE_IN_BYTES);
 	if (!stat) {
 		stat = i2cread(state, data, size);
@@ -260,7 +259,7 @@ static int read_register_block(struct mxl *state, u32 reg, u32 size, u8 *data)
 	return stat;
 }
 
-static int read_by_mnemonic(struct mxl *state, 
+static int read_by_mnemonic(struct mxl *state,
 			    u32 reg, u8 lsbloc, u8 numofbits, u32 *val)
 {
 	u32 data = 0, mask = 0;
@@ -277,12 +276,12 @@ static int read_by_mnemonic(struct mxl *state,
 }
 
 
-static int update_by_mnemonic(struct mxl *state, 
+static int update_by_mnemonic(struct mxl *state,
 			      u32 reg, u8 lsbloc, u8 numofbits, u32 val)
 {
 	u32 data, mask;
 	int stat;
-	
+
 	stat = read_register(state, reg, &data);
 	if (stat)
 		return stat;
@@ -292,14 +291,14 @@ static int update_by_mnemonic(struct mxl *state,
 	return stat;
 }
 
-static void extract_from_mnemonic(u32 regAddr, u8 lsbPos, u8 width, 
+static void extract_from_mnemonic(u32 regAddr, u8 lsbPos, u8 width,
 				  u32 *toAddr, u8 *toLsbPos, u8 *toWidth)
 {
-	if (toAddr) 
+	if (toAddr)
 		*toAddr = regAddr;
-	if (toLsbPos) 
+	if (toLsbPos)
 		*toLsbPos = lsbPos;
-	if (toWidth) 
+	if (toWidth)
 		*toWidth = width;
 }
 
@@ -308,20 +307,20 @@ static int firmware_is_alive(struct mxl *state)
 	u32 hb0 = 0, hb1 = 0;
 	int alive = 0;
 	unsigned long timeout;
-	
+
 	timeout = jiffies + (7 * HZ) / 10;
 	do {
-		read_register(state, HYDRA_HEAR_BEAT, &hb0); 
+		read_register(state, HYDRA_HEAR_BEAT, &hb0);
 		msleep(20);
-		read_register(state, HYDRA_HEAR_BEAT, &hb1); 
+		read_register(state, HYDRA_HEAR_BEAT, &hb1);
 		if (hb0 && hb1) {
-			if ((hb1 - hb0) == 0) 
+			if ((hb1 - hb0) == 0)
 				alive = 0;
-			else 
+			else
 				alive = 1;
 		}
 	} while (time_before(jiffies, timeout));
-	
+
 	return alive;
 }
 
@@ -333,7 +332,7 @@ static int init(struct dvb_frontend *fe)
 static void release(struct dvb_frontend *fe)
 {
 	struct mxl *state = fe->demodulator_priv;
-	
+
 	/* Release one frontend, two more shall take its place! */
 	state->base->count--;
 	if (state->base->count == 0) {
@@ -351,7 +350,7 @@ static int get_algo(struct dvb_frontend *fe)
 static int cfg_scrambler(struct mxl *state)
 {
 	u8 buf[26] = {
-		MXL_HYDRA_PLID_CMD_WRITE, 24, 
+		MXL_HYDRA_PLID_CMD_WRITE, 24,
 		0, MXL_HYDRA_DEMOD_SCRAMBLE_CODE_CMD, 0, 0,
 		state->demod, 0, 0, 0,
 		0, 0, 0, 0, 0, 0, 0, 0,
@@ -380,7 +379,7 @@ static int set_parameters(struct dvb_frontend *fe)
 		{XPT_ENABLE_INPUT2}, {XPT_ENABLE_INPUT3},
 		{XPT_ENABLE_INPUT4}, {XPT_ENABLE_INPUT5},
 		{XPT_ENABLE_INPUT6}, {XPT_ENABLE_INPUT7} };
-	
+
 	switch (p->delivery_system) {
 	case SYS_DSS:
 		demodChanCfg.standard = MXL_HYDRA_DSS;
@@ -401,11 +400,11 @@ static int set_parameters(struct dvb_frontend *fe)
 		return -EINVAL;
 	}
 
-	update_by_mnemonic(state, 
-			   xpt_enable_dvb_input[demodId].regAddr, 
-			   xpt_enable_dvb_input[demodId].lsbPos, 
-			   xpt_enable_dvb_input[demodId].numOfBits, 
-			   MXL_TRUE); 
+	update_by_mnemonic(state,
+			   xpt_enable_dvb_input[demodId].regAddr,
+			   xpt_enable_dvb_input[demodId].lsbPos,
+			   xpt_enable_dvb_input[demodId].numOfBits,
+			   MXL_TRUE);
 
 	demodChanCfg.tunerIndex = state->tuner;
 	demodChanCfg.demodIndex = state->demod;
@@ -416,17 +415,17 @@ static int set_parameters(struct dvb_frontend *fe)
 	demodChanCfg.fecCodeRate = MXL_HYDRA_FEC_AUTO;
 
 	if (p->delivery_system == SYS_DSS)
-		update_by_mnemonic(state, 
-				   xpt_enable_dss_input[demodId].regAddr, 
-				   xpt_enable_dss_input[demodId].lsbPos, 
-				   xpt_enable_dss_input[demodId].numOfBits, 
-				   MXL_TRUE); 
+		update_by_mnemonic(state,
+				   xpt_enable_dss_input[demodId].regAddr,
+				   xpt_enable_dss_input[demodId].lsbPos,
+				   xpt_enable_dss_input[demodId].numOfBits,
+				   MXL_TRUE);
 	else
-		update_by_mnemonic(state, 
-				   xpt_enable_dss_input[demodId].regAddr, 
-				   xpt_enable_dss_input[demodId].lsbPos, 
-				   xpt_enable_dss_input[demodId].numOfBits, 
-				   MXL_FALSE); 
+		update_by_mnemonic(state,
+				   xpt_enable_dss_input[demodId].regAddr,
+				   xpt_enable_dss_input[demodId].lsbPos,
+				   xpt_enable_dss_input[demodId].numOfBits,
+				   MXL_FALSE);
 
 	BUILD_HYDRA_CMD(MXL_HYDRA_DEMOD_SET_PARAM_CMD, MXL_CMD_WRITE,
 			cmdSize, &demodChanCfg, cmdBuff);
@@ -447,9 +446,9 @@ static int read_status(struct dvb_frontend *fe, fe_status_t *status)
 				     HYDRA_DMD_STATUS_OFFSET(state->demod)),
 			     &regData);
 	mutex_unlock(&state->base->status_lock);
-	
+
 	*status = (regData == 1) ? 0x1f : 0;
-	
+
 	return 0;
 }
 
@@ -584,7 +583,7 @@ static struct dvb_frontend_ops mxl_ops = {
 static struct mxl_base *match_base(struct i2c_adapter  *i2c, u8 adr)
 {
 	struct mxl_base *p;
-	
+
 	list_for_each_entry(p, &mxllist, mxllist)
 		if (p->i2c == i2c && p->adr == adr)
 			return p;
@@ -595,18 +594,18 @@ static void cfg_dev_xtal(struct mxl *state, u32 freq, u32 cap, u32 enable)
 {
 	SET_REG_FIELD_DATA(AFE_REG_D2A_XTAL_EN_CLKOUT_1P8, enable);
 	if (freq == 24000000)
-		write_register(state, HYDRA_CRYSTAL_SETTING, 0); 
+		write_register(state, HYDRA_CRYSTAL_SETTING, 0);
 	else
-		write_register(state, HYDRA_CRYSTAL_SETTING, 1); 
-	
-	write_register(state, HYDRA_CRYSTAL_CAP, cap); 
+		write_register(state, HYDRA_CRYSTAL_SETTING, 1);
+
+	write_register(state, HYDRA_CRYSTAL_CAP, cap);
 }
 
 static u32 get_big_endian(u8 numOfBits, const u8 buf[])
 {
 	u32 retValue = 0;
-	
-	switch(numOfBits) {
+
+	switch (numOfBits) {
 	case 24:
 		retValue = (((u32)buf[0]) << 16) |
 			(((u32)buf[1]) << 8) | buf[2];
@@ -619,7 +618,7 @@ static u32 get_big_endian(u8 numOfBits, const u8 buf[])
 	default:
 		break;
 	}
-	
+
 	return retValue;
 }
 
@@ -634,7 +633,7 @@ static void flip_data_in_dword(u32 size, u8 *d)
 	}
 }
 
-static int write_fw_segment(struct mxl *state, 
+static int write_fw_segment(struct mxl *state,
 			    u32 MemAddr, u32 totalSize, u8 *dataPtr)
 {
 	int status;
@@ -644,60 +643,63 @@ static int write_fw_segment(struct mxl *state,
 	u8 *wBufPtr = NULL;
 	u32 blockSize = MXL_HYDRA_OEM_MAX_BLOCK_WRITE_LENGTH;
 	u8 wMsgBuffer[MXL_HYDRA_OEM_MAX_BLOCK_WRITE_LENGTH];
-	
+
 	do {
 		size = origSize = (((u32)(dataCount + blockSize)) > totalSize) ?
 			(totalSize - dataCount) : blockSize;
 		wBufPtr = dataPtr;
-		
+
 		if (origSize & 3) {
 			size = (origSize + 4) & ~3;
 			wBufPtr = &wMsgBuffer[0];
-			memset((void *)wBufPtr + origSize, 0x00, size - origSize);
+			memset((void *)wBufPtr + origSize,
+			       0x00, size - origSize);
 			memcpy((void *)wBufPtr, (void *)dataPtr, origSize);
 		}
-		flip_data_in_dword(size, wBufPtr); 
+		flip_data_in_dword(size, wBufPtr);
 		status  = write_firmware_block(state, MemAddr, size, wBufPtr);
-		if (status) 
+		if (status)
 			return status;
 		dataCount += size;
 		MemAddr   += size;
 		dataPtr   += size;
 	} while (dataCount < totalSize);
-	
+
 	return status;
 }
 
-static int do_firmware_download(struct mxl *state, u32 mbinBufferSize,
+static int do_firmware_download(struct mxl *state,
+				u32 mbinBufferSize,
 				u8 *mbinBufferPtr)
 {
 	int status;
 	u32 index = 0;
 	u32 segLength = 0;
 	u32 segAddress = 0;
-	MBIN_FILE_T* mbinPtr  = (MBIN_FILE_T*)mbinBufferPtr;
+	MBIN_FILE_T *mbinPtr  = (MBIN_FILE_T *)mbinBufferPtr;
 	MBIN_SEGMENT_T *segmentPtr;
 	u32 data;
-	
+
 	if (mbinPtr->header.id != MBIN_FILE_HEADER_ID) {
 		pr_err("%s: Invalid file header ID (%c)\n",
-		       __FUNCTION__, mbinPtr->header.id);
+		       __func__, mbinPtr->header.id);
 		return -EINVAL;
 	}
 	segmentPtr = (MBIN_SEGMENT_T *) (&mbinPtr->data[0]);
 	for (index = 0; index < mbinPtr->header.numSegments; index++) {
 		if (segmentPtr->header.id != MBIN_SEGMENT_HEADER_ID) {
 			pr_err("%s: Invalid segment header ID (%c)\n",
-			       __FUNCTION__, segmentPtr->header.id);
+			       __func__, segmentPtr->header.id);
 			return -EINVAL;
 		}
 		segLength  = get_big_endian(24, &(segmentPtr->header.len24[0]));
-		segAddress = get_big_endian(32, &(segmentPtr->header.address[0]));
+		segAddress =
+			get_big_endian(32, &(segmentPtr->header.address[0]));
 		status = write_fw_segment(state, segAddress,
-					  segLength, (u8*) segmentPtr->data);
+					  segLength, (u8 *) segmentPtr->data);
 		if (status)
 			return status;
-		segmentPtr = (MBIN_SEGMENT_T*)
+		segmentPtr = (MBIN_SEGMENT_T *)
 			&(segmentPtr->data[((segLength + 3) / 4) * 4]);
 	}
 	return status;
@@ -711,7 +713,7 @@ static int firmware_download(struct mxl *state, u32 mbinBufferSize,
 	MXL_HYDRA_SKU_COMMAND_T devSkuCfg;
 	u8 cmdSize = sizeof(MXL_HYDRA_SKU_COMMAND_T);
 	u8 cmdBuff[sizeof(MXL_HYDRA_SKU_COMMAND_T) + 6];
-	
+
 	/* put CPU into reset */
 	status = SET_REG_FIELD_DATA(PRCM_PRCM_CPU_SOFT_RST_N, 0);
 	if (status)
@@ -720,27 +722,27 @@ static int firmware_download(struct mxl *state, u32 mbinBufferSize,
 
 	/* Reset TX FIFO's, BBAN, XBAR */
 	status = write_register(state, HYDRA_RESET_TRANSPORT_FIFO_REG,
-				HYDRA_RESET_TRANSPORT_FIFO_DATA); 
+				HYDRA_RESET_TRANSPORT_FIFO_DATA);
 	if (status)
 		return status;
 	status = write_register(state, HYDRA_RESET_BBAND_REG,
-				HYDRA_RESET_BBAND_DATA); 
+				HYDRA_RESET_BBAND_DATA);
 	if (status)
 		return status;
 	status = write_register(state, HYDRA_RESET_XBAR_REG,
-				HYDRA_RESET_XBAR_DATA); 
+				HYDRA_RESET_XBAR_DATA);
 	if (status)
 		return status;
 
 	/* Disable clock to Baseband, Wideband, SerDes, Alias ext & Transport modules */
-	status = write_register(state, HYDRA_MODULES_CLK_2_REG, HYDRA_DISABLE_CLK_2); 
+	status = write_register(state, HYDRA_MODULES_CLK_2_REG, HYDRA_DISABLE_CLK_2);
 	if (status)
 		return status;
 	/* Clear Software & Host interrupt status - (Clear on read) */
-	status = read_register(state, HYDRA_PRCM_ROOT_CLK_REG, &regData); 
+	status = read_register(state, HYDRA_PRCM_ROOT_CLK_REG, &regData);
 	if (status)
 		return status;
-	status = do_firmware_download(state, mbinBufferSize, mbinBufferPtr); 
+	status = do_firmware_download(state, mbinBufferSize, mbinBufferPtr);
 	if (status)
 		return status;
 	/* Bring CPU out of reset */
@@ -786,13 +788,13 @@ static int cfg_ts_pad_mux(struct mxl *state, MXL_BOOL_E enableSerialTS)
 {
 	int status = 0;
 	u32 padMuxValue = 0;
-	
+
 	if (enableSerialTS == MXL_TRUE)
 		padMuxValue = 0;
-	else 
+	else
 		padMuxValue = 3;
 
-	switch(state->base->type) {
+	switch (state->base->type) {
 	case MXL_HYDRA_DEVICE_561:
 	case MXL_HYDRA_DEVICE_581:
 		status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_14_PINMUX_SEL, padMuxValue);
@@ -809,7 +811,7 @@ static int cfg_ts_pad_mux(struct mxl *state, MXL_BOOL_E enableSerialTS)
 		status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_25_PINMUX_SEL, padMuxValue);
 		status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_26_PINMUX_SEL, padMuxValue);
 		break;
-		
+
 	case MXL_HYDRA_DEVICE_584:
 	default:
 		status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_09_PINMUX_SEL, padMuxValue);
@@ -828,189 +830,190 @@ static int cfg_ts_pad_mux(struct mxl *state, MXL_BOOL_E enableSerialTS)
 	return status;
 }
 
-static int config_ts(struct mxl *state, MXL_HYDRA_DEMOD_ID_E demodId, MXL_HYDRA_MPEGOUT_PARAM_T* mpegOutParamPtr)
+static int config_ts(struct mxl *state, MXL_HYDRA_DEMOD_ID_E demodId, MXL_HYDRA_MPEGOUT_PARAM_T *mpegOutParamPtr)
 {
 	int status = 0;
 	u32 ncoCountMin = 0;
 	u32 clkType = 0;
-	
+
 	MXL_REG_FIELD_T xpt_sync_polarity[MXL_HYDRA_DEMOD_MAX] = {
 		{XPT_SYNC_POLARITY0}, {XPT_SYNC_POLARITY1},
 		{XPT_SYNC_POLARITY2}, {XPT_SYNC_POLARITY3},
 		{XPT_SYNC_POLARITY4}, {XPT_SYNC_POLARITY5},
-		{XPT_SYNC_POLARITY6}, {XPT_SYNC_POLARITY7}};
+		{XPT_SYNC_POLARITY6}, {XPT_SYNC_POLARITY7} };
 	MXL_REG_FIELD_T xpt_clock_polarity[MXL_HYDRA_DEMOD_MAX] = {
 		{XPT_CLOCK_POLARITY0}, {XPT_CLOCK_POLARITY1},
 		{XPT_CLOCK_POLARITY2}, {XPT_CLOCK_POLARITY3},
 		{XPT_CLOCK_POLARITY4}, {XPT_CLOCK_POLARITY5},
-		{XPT_CLOCK_POLARITY6}, {XPT_CLOCK_POLARITY7}};
+		{XPT_CLOCK_POLARITY6}, {XPT_CLOCK_POLARITY7} };
 	MXL_REG_FIELD_T xpt_valid_polarity[MXL_HYDRA_DEMOD_MAX] = {
 		{XPT_VALID_POLARITY0}, {XPT_VALID_POLARITY1},
 		{XPT_VALID_POLARITY2}, {XPT_VALID_POLARITY3},
 		{XPT_VALID_POLARITY4}, {XPT_VALID_POLARITY5},
-		{XPT_VALID_POLARITY6}, {XPT_VALID_POLARITY7}};
+		{XPT_VALID_POLARITY6}, {XPT_VALID_POLARITY7} };
 	MXL_REG_FIELD_T xpt_ts_clock_phase[MXL_HYDRA_DEMOD_MAX] = {
 		{XPT_TS_CLK_PHASE0}, {XPT_TS_CLK_PHASE1},
 		{XPT_TS_CLK_PHASE2}, {XPT_TS_CLK_PHASE3},
 		{XPT_TS_CLK_PHASE4}, {XPT_TS_CLK_PHASE5},
-		{XPT_TS_CLK_PHASE6}, {XPT_TS_CLK_PHASE7}};
+		{XPT_TS_CLK_PHASE6}, {XPT_TS_CLK_PHASE7} };
 	MXL_REG_FIELD_T xpt_lsb_first[MXL_HYDRA_DEMOD_MAX] = {
 		{XPT_LSB_FIRST0}, {XPT_LSB_FIRST1}, {XPT_LSB_FIRST2}, {XPT_LSB_FIRST3},
-		{XPT_LSB_FIRST4}, {XPT_LSB_FIRST5}, {XPT_LSB_FIRST6}, {XPT_LSB_FIRST7}};
-	MXL_REG_FIELD_T xpt_sync_byte[MXL_HYDRA_DEMOD_MAX] = { 
+		{XPT_LSB_FIRST4}, {XPT_LSB_FIRST5}, {XPT_LSB_FIRST6}, {XPT_LSB_FIRST7} };
+	MXL_REG_FIELD_T xpt_sync_byte[MXL_HYDRA_DEMOD_MAX] = {
 		{XPT_SYNC_FULL_BYTE0}, {XPT_SYNC_FULL_BYTE1},
 		{XPT_SYNC_FULL_BYTE2}, {XPT_SYNC_FULL_BYTE3},
 		{XPT_SYNC_FULL_BYTE4}, {XPT_SYNC_FULL_BYTE5},
-		{XPT_SYNC_FULL_BYTE6}, {XPT_SYNC_FULL_BYTE7}};
+		{XPT_SYNC_FULL_BYTE6}, {XPT_SYNC_FULL_BYTE7} };
 	MXL_REG_FIELD_T xpt_enable_output[MXL_HYDRA_DEMOD_MAX] = {
 		{XPT_ENABLE_OUTPUT0}, {XPT_ENABLE_OUTPUT1},
 		{XPT_ENABLE_OUTPUT2}, {XPT_ENABLE_OUTPUT3},
 		{XPT_ENABLE_OUTPUT4}, {XPT_ENABLE_OUTPUT5},
-		{XPT_ENABLE_OUTPUT6}, {XPT_ENABLE_OUTPUT7}};
+		{XPT_ENABLE_OUTPUT6}, {XPT_ENABLE_OUTPUT7} };
 	MXL_REG_FIELD_T xpt_enable_dvb_input[MXL_HYDRA_DEMOD_MAX] = {
 		{XPT_ENABLE_INPUT0}, {XPT_ENABLE_INPUT1},
 		{XPT_ENABLE_INPUT2}, {XPT_ENABLE_INPUT3},
 		{XPT_ENABLE_INPUT4}, {XPT_ENABLE_INPUT5},
-		{XPT_ENABLE_INPUT6}, {XPT_ENABLE_INPUT7}};
+		{XPT_ENABLE_INPUT6}, {XPT_ENABLE_INPUT7} };
 	MXL_REG_FIELD_T xpt_err_replace_sync[MXL_HYDRA_DEMOD_MAX] = {
 		{XPT_ERROR_REPLACE_SYNC0}, {XPT_ERROR_REPLACE_SYNC1},
 		{XPT_ERROR_REPLACE_SYNC2}, {XPT_ERROR_REPLACE_SYNC3},
 		{XPT_ERROR_REPLACE_SYNC4}, {XPT_ERROR_REPLACE_SYNC5},
-		{XPT_ERROR_REPLACE_SYNC6}, {XPT_ERROR_REPLACE_SYNC7}};
+		{XPT_ERROR_REPLACE_SYNC6}, {XPT_ERROR_REPLACE_SYNC7} };
 	MXL_REG_FIELD_T xpt_err_replace_valid[MXL_HYDRA_DEMOD_MAX] = {
 		{XPT_ERROR_REPLACE_VALID0}, {XPT_ERROR_REPLACE_VALID1},
 		{XPT_ERROR_REPLACE_VALID2}, {XPT_ERROR_REPLACE_VALID3},
 		{XPT_ERROR_REPLACE_VALID4}, {XPT_ERROR_REPLACE_VALID5},
-		{XPT_ERROR_REPLACE_VALID6}, {XPT_ERROR_REPLACE_VALID7}};
-	MXL_REG_FIELD_T xpt_continuous_clock[MXL_HYDRA_DEMOD_MAX] = {   
+		{XPT_ERROR_REPLACE_VALID6}, {XPT_ERROR_REPLACE_VALID7} };
+	MXL_REG_FIELD_T xpt_continuous_clock[MXL_HYDRA_DEMOD_MAX] = {
 		{XPT_TS_CLK_OUT_EN0}, {XPT_TS_CLK_OUT_EN1},
 		{XPT_TS_CLK_OUT_EN2}, {XPT_TS_CLK_OUT_EN3},
 		{XPT_TS_CLK_OUT_EN4}, {XPT_TS_CLK_OUT_EN5},
-		{XPT_TS_CLK_OUT_EN6}, {XPT_TS_CLK_OUT_EN7}};
+		{XPT_TS_CLK_OUT_EN6}, {XPT_TS_CLK_OUT_EN7} };
 	MXL_REG_FIELD_T mxl561_xpt_ts_sync[MXL_HYDRA_DEMOD_ID_6] = {
 		{PAD_MUX_DIGIO_25_PINMUX_SEL}, {PAD_MUX_DIGIO_20_PINMUX_SEL},
 		{PAD_MUX_DIGIO_17_PINMUX_SEL}, {PAD_MUX_DIGIO_11_PINMUX_SEL},
-		{PAD_MUX_DIGIO_08_PINMUX_SEL}, {PAD_MUX_DIGIO_03_PINMUX_SEL}};
+		{PAD_MUX_DIGIO_08_PINMUX_SEL}, {PAD_MUX_DIGIO_03_PINMUX_SEL} };
 	MXL_REG_FIELD_T mxl561_xpt_ts_valid[MXL_HYDRA_DEMOD_ID_6] = {
 		{PAD_MUX_DIGIO_26_PINMUX_SEL}, {PAD_MUX_DIGIO_19_PINMUX_SEL},
 		{PAD_MUX_DIGIO_18_PINMUX_SEL}, {PAD_MUX_DIGIO_10_PINMUX_SEL},
-		{PAD_MUX_DIGIO_09_PINMUX_SEL}, {PAD_MUX_DIGIO_02_PINMUX_SEL}};
-	
+		{PAD_MUX_DIGIO_09_PINMUX_SEL}, {PAD_MUX_DIGIO_02_PINMUX_SEL} };
+
 	if (MXL_ENABLE == mpegOutParamPtr->enable) {
 		cfg_ts_pad_mux(state, MXL_TRUE);
 		SET_REG_FIELD_DATA(XPT_ENABLE_PARALLEL_OUTPUT, MXL_FALSE);
 	}
 	ncoCountMin = (u32)(MXL_HYDRA_NCO_CLK/mpegOutParamPtr->maxMpegClkRate);
 	SET_REG_FIELD_DATA(XPT_NCO_COUNT_MIN, ncoCountMin);
-		
+
 	if (mpegOutParamPtr->mpegClkType == MXL_HYDRA_MPEG_CLK_CONTINUOUS)
 		clkType = 1;
-	
+
 	if (mpegOutParamPtr->mpegMode < MXL_HYDRA_MPEG_MODE_PARALLEL) {
 		status  |= update_by_mnemonic(state,
 					      xpt_continuous_clock[demodId].regAddr,
 					      xpt_continuous_clock[demodId].lsbPos,
 					      xpt_continuous_clock[demodId].numOfBits,
 					      clkType);
-	} else 
+	} else
 		SET_REG_FIELD_DATA(XPT_TS_CLK_OUT_EN_PARALLEL, clkType);
 
-	status |= update_by_mnemonic(state, 
+	status |= update_by_mnemonic(state,
 				     xpt_sync_polarity[demodId].regAddr,
 				     xpt_sync_polarity[demodId].lsbPos,
 				     xpt_sync_polarity[demodId].numOfBits,
 				     mpegOutParamPtr->mpegSyncPol);
-	
-	status |= update_by_mnemonic(state, 
-				     xpt_valid_polarity[demodId].regAddr,    
-				     xpt_valid_polarity[demodId].lsbPos,     
-				     xpt_valid_polarity[demodId].numOfBits,  
-				     mpegOutParamPtr->mpegValidPol); 
-	
-	status |= update_by_mnemonic(state, 
-				     xpt_clock_polarity[demodId].regAddr, 
-				     xpt_clock_polarity[demodId].lsbPos, 
-				     xpt_clock_polarity[demodId].numOfBits, 
+
+	status |= update_by_mnemonic(state,
+				     xpt_valid_polarity[demodId].regAddr,
+				     xpt_valid_polarity[demodId].lsbPos,
+				     xpt_valid_polarity[demodId].numOfBits,
+				     mpegOutParamPtr->mpegValidPol);
+
+	status |= update_by_mnemonic(state,
+				     xpt_clock_polarity[demodId].regAddr,
+				     xpt_clock_polarity[demodId].lsbPos,
+				     xpt_clock_polarity[demodId].numOfBits,
 				     mpegOutParamPtr->mpegClkPol);
-	
-	status |= update_by_mnemonic(state, 
-				     xpt_sync_byte[demodId].regAddr, 
-				     xpt_sync_byte[demodId].lsbPos, 
-				     xpt_sync_byte[demodId].numOfBits, 
+
+	status |= update_by_mnemonic(state,
+				     xpt_sync_byte[demodId].regAddr,
+				     xpt_sync_byte[demodId].lsbPos,
+				     xpt_sync_byte[demodId].numOfBits,
 				     mpegOutParamPtr->mpegSyncPulseWidth);
-	
-	status |= update_by_mnemonic(state, 
-				     xpt_ts_clock_phase[demodId].regAddr, 
-				     xpt_ts_clock_phase[demodId].lsbPos, 
-				     xpt_ts_clock_phase[demodId].numOfBits, 
+
+	status |= update_by_mnemonic(state,
+				     xpt_ts_clock_phase[demodId].regAddr,
+				     xpt_ts_clock_phase[demodId].lsbPos,
+				     xpt_ts_clock_phase[demodId].numOfBits,
 				     mpegOutParamPtr->mpegClkPhase);
-	
-	status |= update_by_mnemonic(state, 
-				     xpt_lsb_first[demodId].regAddr, 
-				     xpt_lsb_first[demodId].lsbPos, 
-				     xpt_lsb_first[demodId].numOfBits, 
+
+	status |= update_by_mnemonic(state,
+				     xpt_lsb_first[demodId].regAddr,
+				     xpt_lsb_first[demodId].lsbPos,
+				     xpt_lsb_first[demodId].numOfBits,
 				     mpegOutParamPtr->lsbOrMsbFirst);
-	
-	switch(mpegOutParamPtr->mpegErrorIndication) {
+
+	switch (mpegOutParamPtr->mpegErrorIndication) {
 	case MXL_HYDRA_MPEG_ERR_REPLACE_SYNC:
-		status |= update_by_mnemonic(state, 
-					     xpt_err_replace_sync[demodId].regAddr, 
-					     xpt_err_replace_sync[demodId].lsbPos, 
-					     xpt_err_replace_sync[demodId].numOfBits, 
+		status |= update_by_mnemonic(state,
+					     xpt_err_replace_sync[demodId].regAddr,
+					     xpt_err_replace_sync[demodId].lsbPos,
+					     xpt_err_replace_sync[demodId].numOfBits,
 					     MXL_TRUE);
-		
-		status |= update_by_mnemonic(state, 
-					     xpt_err_replace_valid[demodId].regAddr, 
-					     xpt_err_replace_valid[demodId].lsbPos, 
-					     xpt_err_replace_valid[demodId].numOfBits, 
+
+		status |= update_by_mnemonic(state,
+					     xpt_err_replace_valid[demodId].regAddr,
+					     xpt_err_replace_valid[demodId].lsbPos,
+					     xpt_err_replace_valid[demodId].numOfBits,
 					     MXL_FALSE);
 		break;
-		
+
 	case MXL_HYDRA_MPEG_ERR_REPLACE_VALID:
-		status |= update_by_mnemonic(state, 
-					     xpt_err_replace_sync[demodId].regAddr, 
-					     xpt_err_replace_sync[demodId].lsbPos, 
-					     xpt_err_replace_sync[demodId].numOfBits, 
+		status |= update_by_mnemonic(state,
+					     xpt_err_replace_sync[demodId].regAddr,
+					     xpt_err_replace_sync[demodId].lsbPos,
+					     xpt_err_replace_sync[demodId].numOfBits,
 					     MXL_FALSE);
-		
-		status |= update_by_mnemonic(state, 
-					     xpt_err_replace_valid[demodId].regAddr, 
-					     xpt_err_replace_valid[demodId].lsbPos, 
-					     xpt_err_replace_valid[demodId].numOfBits, 
+
+		status |= update_by_mnemonic(state,
+					     xpt_err_replace_valid[demodId].regAddr,
+					     xpt_err_replace_valid[demodId].lsbPos,
+					     xpt_err_replace_valid[demodId].numOfBits,
 					     MXL_TRUE);
 		break;
-		
+
 	case MXL_HYDRA_MPEG_ERR_INDICATION_DISABLED:
 	default:
-		status |= update_by_mnemonic(state, 
-					     xpt_err_replace_sync[demodId].regAddr, 
-					     xpt_err_replace_sync[demodId].lsbPos, 
-					     xpt_err_replace_sync[demodId].numOfBits, 
+		status |= update_by_mnemonic(state,
+					     xpt_err_replace_sync[demodId].regAddr,
+					     xpt_err_replace_sync[demodId].lsbPos,
+					     xpt_err_replace_sync[demodId].numOfBits,
 					     MXL_FALSE);
-		
-		status |= update_by_mnemonic(state, 
-					     xpt_err_replace_valid[demodId].regAddr, 
-					     xpt_err_replace_valid[demodId].lsbPos, 
-					     xpt_err_replace_valid[demodId].numOfBits, 
+
+		status |= update_by_mnemonic(state,
+					     xpt_err_replace_valid[demodId].regAddr,
+					     xpt_err_replace_valid[demodId].lsbPos,
+					     xpt_err_replace_valid[demodId].numOfBits,
 					     MXL_FALSE);
-		
+
 		break;
-		
+
 	}
-	
+
 	if (mpegOutParamPtr->mpegMode != MXL_HYDRA_MPEG_MODE_PARALLEL) {
-		status |= update_by_mnemonic(state, 
-					     xpt_enable_output[demodId].regAddr, 
-					     xpt_enable_output[demodId].lsbPos, 
-					     xpt_enable_output[demodId].numOfBits, 
+		status |= update_by_mnemonic(state,
+					     xpt_enable_output[demodId].regAddr,
+					     xpt_enable_output[demodId].lsbPos,
+					     xpt_enable_output[demodId].numOfBits,
 					     mpegOutParamPtr->enable);
-		
-		status |= update_by_mnemonic(state, 
-					     xpt_enable_dvb_input[demodId].regAddr, 
-					     xpt_enable_dvb_input[demodId].lsbPos, 
-					     xpt_enable_dvb_input[demodId].numOfBits, 
-					     mpegOutParamPtr->enable);
-		
+
+		status |=
+			update_by_mnemonic(state,
+					   xpt_enable_dvb_input[demodId].regAddr,
+					   xpt_enable_dvb_input[demodId].lsbPos,
+					   xpt_enable_dvb_input[demodId].numOfBits,
+					   mpegOutParamPtr->enable);
+
 	}
 	return status;
 }
@@ -1036,7 +1039,8 @@ static int config_dis(struct mxl *state, u32 id)
 	MXL_HYDRA_DISEQC_ID_E diseqcId = id;
 	MXL_HYDRA_DISEQC_OPMODE_E opMode = MXL_HYDRA_DISEQC_ENVELOPE_MODE;
 	MXL_HYDRA_DISEQC_VER_E version = MXL_HYDRA_DISEQC_1_X;
-	MXL_HYDRA_DISEQC_CARRIER_FREQ_E carrierFreqInHz = MXL_HYDRA_DISEQC_CARRIER_FREQ_22KHZ;
+	MXL_HYDRA_DISEQC_CARRIER_FREQ_E carrierFreqInHz =
+		MXL_HYDRA_DISEQC_CARRIER_FREQ_22KHZ;
 	MXL58x_DSQ_OP_MODE_T diseqcMsg;
 	u8 cmdSize = sizeof(diseqcMsg);
 	u8 cmdBuff[MXL_HYDRA_OEM_MAX_CMD_BUFF_LEN];
@@ -1046,9 +1050,37 @@ static int config_dis(struct mxl *state, u32 id)
 	diseqcMsg.version = version;
 	diseqcMsg.opMode = opMode;
 
-	BUILD_HYDRA_CMD(MXL_HYDRA_DISEQC_CFG_MSG_CMD, MXL_CMD_WRITE, cmdSize, &diseqcMsg, cmdBuff);
+	BUILD_HYDRA_CMD(MXL_HYDRA_DISEQC_CFG_MSG_CMD,
+			MXL_CMD_WRITE, cmdSize, &diseqcMsg, cmdBuff);
 	return send_command(state, cmdSize, &cmdBuff[0]);
 }
+
+static int load_fw(struct mxl *state, struct mxl5xx_cfg *cfg)
+{
+	int stat = 0;
+	u8 *buf;
+	
+	if (cfg->fw)
+		return firmware_download(state, cfg->fw_len, cfg->fw);
+	
+#ifdef FW_INCLUDED
+	return firmware_download(state, sizeof(hydra_fw), hydra_fw);
+#endif
+	
+	if (!cfg->fw_read)
+		return -1;
+
+	buf = vmalloc(0x40000);
+	if (!buf)
+		return -ENOMEM;
+	
+	cfg->fw_read(cfg->fw_priv, buf, 0x40000);
+	stat = firmware_download(state, 0x40000, buf);
+	vfree(buf);
+	
+	return stat;
+}
+
 
 static int probe(struct mxl *state, struct mxl5xx_cfg *cfg)
 {
@@ -1060,31 +1092,32 @@ static int probe(struct mxl *state, struct mxl5xx_cfg *cfg)
 	fw = firmware_is_alive(state);
 
 	if (!fw)  {
-		SET_REG_FIELD_DATA(PRCM_AFE_REG_CLOCK_ENABLE, 1);  
-		SET_REG_FIELD_DATA(PRCM_PRCM_AFE_REG_SOFT_RST_N, 1);  
+		SET_REG_FIELD_DATA(PRCM_AFE_REG_CLOCK_ENABLE, 1);
+		SET_REG_FIELD_DATA(PRCM_PRCM_AFE_REG_SOFT_RST_N, 1);
+#if 0
+		/* only for engineering samples */
 		write_register(state, 0x90200070, 0xF400);
-		SET_REG_FIELD_DATA(AFE_REG_D2A_TA_RFFE_RF1_EN_1P8, 1);  
-		SET_REG_FIELD_DATA(AFE_REG_D2A_TB_RFFE_RF1_EN_1P8, 1);  
-		SET_REG_FIELD_DATA(AFE_REG_D2A_TC_RFFE_RF1_EN_1P8, 1);  
-		SET_REG_FIELD_DATA(AFE_REG_D2A_TD_RFFE_RF1_EN_1P8, 1);  
-		SET_REG_FIELD_DATA(AFE_REG_D2A_TA_ADC_CLK_OUT_FLIP, 1);  
-		SET_REG_FIELD_DATA(AFE_REG_D2A_TB_ADC_CLK_OUT_FLIP, 1); 
-		SET_REG_FIELD_DATA(AFE_REG_D2A_TC_ADC_CLK_OUT_FLIP, 1);  
-		SET_REG_FIELD_DATA(AFE_REG_D2A_TD_ADC_CLK_OUT_FLIP, 1); 
-		SET_REG_FIELD_DATA(AFE_REG_D2A_TA_RFFE_SPARE_1P8, 1); 
-		SET_REG_FIELD_DATA(AFE_REG_D2A_TB_RFFE_SPARE_1P8, 1); 
-		SET_REG_FIELD_DATA(AFE_REG_D2A_TC_RFFE_SPARE_1P8, 1); 
-		SET_REG_FIELD_DATA(AFE_REG_D2A_TD_RFFE_SPARE_1P8, 1); 
-		SET_REG_FIELD_DATA(AFE_REG_D2A_TA_RFFE_LNACAPLOAD_1P8, 0); 
+		SET_REG_FIELD_DATA(AFE_REG_D2A_TA_RFFE_RF1_EN_1P8, 1);
+		SET_REG_FIELD_DATA(AFE_REG_D2A_TB_RFFE_RF1_EN_1P8, 1);
+		SET_REG_FIELD_DATA(AFE_REG_D2A_TC_RFFE_RF1_EN_1P8, 1);
+		SET_REG_FIELD_DATA(AFE_REG_D2A_TD_RFFE_RF1_EN_1P8, 1);
+		SET_REG_FIELD_DATA(AFE_REG_D2A_TA_ADC_CLK_OUT_FLIP, 1);
+		SET_REG_FIELD_DATA(AFE_REG_D2A_TB_ADC_CLK_OUT_FLIP, 1);
+		SET_REG_FIELD_DATA(AFE_REG_D2A_TC_ADC_CLK_OUT_FLIP, 1);
+		SET_REG_FIELD_DATA(AFE_REG_D2A_TD_ADC_CLK_OUT_FLIP, 1);
+		SET_REG_FIELD_DATA(AFE_REG_D2A_TA_RFFE_SPARE_1P8, 1);
+		SET_REG_FIELD_DATA(AFE_REG_D2A_TB_RFFE_SPARE_1P8, 1);
+		SET_REG_FIELD_DATA(AFE_REG_D2A_TC_RFFE_SPARE_1P8, 1);
+		SET_REG_FIELD_DATA(AFE_REG_D2A_TD_RFFE_SPARE_1P8, 1);
+		SET_REG_FIELD_DATA(AFE_REG_D2A_TA_RFFE_LNACAPLOAD_1P8, 0);
 		SET_REG_FIELD_DATA(AFE_REG_D2A_TB_RFFE_LNACAPLOAD_1P8, 0);
-		SET_REG_FIELD_DATA(AFE_REG_D2A_TC_RFFE_LNACAPLOAD_1P8, 0); 
-		SET_REG_FIELD_DATA(AFE_REG_D2A_TD_RFFE_LNACAPLOAD_1P8, 0); 
+		SET_REG_FIELD_DATA(AFE_REG_D2A_TC_RFFE_LNACAPLOAD_1P8, 0);
+		SET_REG_FIELD_DATA(AFE_REG_D2A_TD_RFFE_LNACAPLOAD_1P8, 0);
+#endif
 	}
 	cfg_dev_xtal(state, cfg->clk, cfg->cap, 0);
-	if (cfg->fw)
-		status = firmware_download(state, cfg->fw_len, cfg->fw);
-	else
-		status = firmware_download(state, sizeof(hydra_fw), hydra_fw);
+
+	status = load_fw(state, cfg);
 	if (status)
 		return status;
 
@@ -1093,21 +1126,25 @@ static int probe(struct mxl *state, struct mxl5xx_cfg *cfg)
 	config_dis(state, 2);
 	config_dis(state, 3);
 	config_mux(state);
-	
+
 	mpegInterfaceCfg.enable = MXL_ENABLE;
 	mpegInterfaceCfg.lsbOrMsbFirst = MXL_HYDRA_MPEG_SERIAL_MSB_1ST;
-	mpegInterfaceCfg.maxMpegClkRate = 139; //  supports only (0 - 104 & 139)MHz
+	/*  supports only (0-104&139)MHz */
+	mpegInterfaceCfg.maxMpegClkRate = 139;
 	mpegInterfaceCfg.mpegClkPhase = MXL_HYDRA_MPEG_CLK_PHASE_SHIFT_0_DEG;
 	mpegInterfaceCfg.mpegClkPol = MXL_HYDRA_MPEG_CLK_IN_PHASE;
-	mpegInterfaceCfg.mpegClkType = MXL_HYDRA_MPEG_CLK_CONTINUOUS; //MXL_HYDRA_MPEG_CLK_GAPPED; 
-	mpegInterfaceCfg.mpegErrorIndication = MXL_HYDRA_MPEG_ERR_INDICATION_DISABLED;
+	/* MXL_HYDRA_MPEG_CLK_GAPPED; */
+	mpegInterfaceCfg.mpegClkType = MXL_HYDRA_MPEG_CLK_CONTINUOUS;
+	mpegInterfaceCfg.mpegErrorIndication =
+		MXL_HYDRA_MPEG_ERR_INDICATION_DISABLED;
 	mpegInterfaceCfg.mpegMode = MXL_HYDRA_MPEG_MODE_SERIAL_3_WIRE;
 	mpegInterfaceCfg.mpegSyncPol  = MXL_HYDRA_MPEG_ACTIVE_HIGH;
 	mpegInterfaceCfg.mpegSyncPulseWidth  = MXL_HYDRA_MPEG_SYNC_WIDTH_BIT;
 	mpegInterfaceCfg.mpegValidPol  = MXL_HYDRA_MPEG_ACTIVE_HIGH;
-	
+
 	for (j = 0; j < 8; j++) {
-		status = config_ts(state, (MXL_HYDRA_DEMOD_ID_E) j, &mpegInterfaceCfg);
+		status = config_ts(state, (MXL_HYDRA_DEMOD_ID_E) j,
+				   &mpegInterfaceCfg);
 		if (status)
 			return status;
 	}
@@ -1124,7 +1161,7 @@ struct dvb_frontend *mxl5xx_attach(struct i2c_adapter *i2c,
 	state = kzalloc(sizeof(struct mxl), GFP_KERNEL);
 	if (!state)
 		return NULL;
-	
+
 	state->demod = demod;
 	state->tuner = tuner;
 
@@ -1151,7 +1188,7 @@ struct dvb_frontend *mxl5xx_attach(struct i2c_adapter *i2c,
 	}
 	state->fe.ops               = mxl_ops;
 	state->fe.demodulator_priv  = state;
-	
+
 	return &state->fe;
 
 fail:

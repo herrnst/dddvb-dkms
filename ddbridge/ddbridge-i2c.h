@@ -28,6 +28,16 @@
 #include <linux/i2c.h>
 #include <linux/types.h>
 
+static inline int i2c_io(struct i2c_adapter *adapter, u8 adr,
+			 u8 *wbuf, u32 wlen, u8 *rbuf, u32 rlen)
+{
+	struct i2c_msg msgs[2] = {{.addr = adr,  .flags = 0,
+				   .buf  = wbuf, .len   = wlen },
+				  {.addr = adr,  .flags = I2C_M_RD,
+				   .buf  = rbuf,  .len   = rlen } };
+	return (i2c_transfer(adapter, msgs, 2) == 2) ? 0 : -1;
+}
+
 static inline int i2c_write(struct i2c_adapter *adap, u8 adr,
 			    u8 *data, int len)
 {

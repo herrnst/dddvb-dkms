@@ -1179,14 +1179,27 @@ static int set_tone(struct dvb_frontend *fe, fe_sec_tone_mode_t tone)
 	switch (tone) {
 	case SEC_TONE_ON:
 		return write_reg(state, RSTV0910_P1_DISTXCFG + offs, 0x38);
-		break;
 	case SEC_TONE_OFF:
 		return write_reg(state, RSTV0910_P1_DISTXCFG + offs, 0x3a);
-		break;
 	default:
 		break;
 	}
 	return -EINVAL;
+}
+
+static int wait_dis(struct stv *state, u8 flag, u8 val)
+{
+	int i;
+	u8 stat;
+	u16 offs = state->nr ? 0x40 : 0;
+
+	for (i = 0; i < 10; i++) {
+		read_reg(state, RSTV0910_P1_DISTXSTATUS + offs, &stat);
+		if ((stat & flag) == val)
+			return 0;
+		msleep(10);
+	}
+	return -1;
 }
 
 static int send_master_cmd(struct dvb_frontend *fe,
@@ -1196,10 +1209,14 @@ static int send_master_cmd(struct dvb_frontend *fe,
 	u16 offs = state->nr ? 0x40 : 0;
 	int i;
 
+	pr_info("master_cmd %02x %02x %02x %02x\n", cmd->msg[0],  cmd->msg[1],  cmd->msg[2],  cmd->msg[3]);
 	write_reg(state, RSTV0910_P1_DISTXCFG + offs, 0x3E);
-	for (i = 0; i < cmd->msg_len; i++)
+	for (i = 0; i < cmd->msg_len; i++) {
+		wait_dis(state, 0x40, 0x00);
 		write_reg(state, RSTV0910_P1_DISTXFIFO + offs, cmd->msg[i]);
+	}
 	write_reg(state, RSTV0910_P1_DISTXCFG + offs, 0x3A);
+	wait_dis(state, 0x20, 0x20);
 	return 0;
 }
 
@@ -1211,6 +1228,25 @@ static int recv_slave_reply(struct dvb_frontend *fe,
 
 static int send_burst(struct dvb_frontend *fe, fe_sec_mini_cmd_t burst)
 {
+#if 0
+	struct stv *state = fe->demodulator_priv;
+	u16 offs = state->nr ? 0x40 : 0;
+	u8 value;
+
+	if (burst == SEC_MINI_A) {
+		pr_info("burst A\n");
+		write_reg(state, RSTV0910_P1_DISTXCFG + offs, 0x3F);
+		value = 0x00;
+	} else {
+		pr_info("burst B\n");
+		write_reg(state, RSTV0910_P1_DISTXCFG + offs, 0x3E);
+		value = 0xFF;
+	}
+	wait_dis(state, 0x40, 0x00);
+	write_reg(state, RSTV0910_P1_DISTXFIFO + offs, value);
+	write_reg(state, RSTV0910_P1_DISTXCFG + offs, 0x3A);
+	wait_dis(state, 0x20, 0x20);
+#endif
 	return 0;
 }
 

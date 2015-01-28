@@ -1,7 +1,7 @@
 /*
  * ddbridge.c: Digital Devices PCIe bridge driver
  *
- * Copyright (C) 2010-2013 Digital Devices GmbH
+ * Copyright (C) 2010-2014 Digital Devices GmbH
  *                         Ralph Metzler <rmetzler@digitaldevices.de>
  *                         Marcus Metzler <mmetzler@digitaldevices.de>
  *
@@ -23,7 +23,7 @@
  * Or, point your browser to http://www.gnu.org/copyleft/gpl.html
  */
 
-/*#define DDB_ALT_DMA*/
+#define DDB_ALT_DMA
 #define DDB_USE_WORK
 /*#define DDB_TEST_THREADED*/
 
@@ -62,9 +62,12 @@ static void __devexit ddb_remove(struct pci_dev *pdev)
 {
 	struct ddb *dev = (struct ddb *) pci_get_drvdata(pdev);
 
+	ddb_nsd_detach(dev);
 	ddb_ports_detach(dev);
 	ddb_i2c_release(dev);
 
+	if (dev->info->ns_num)
+		ddbwritel(dev, 0, ETHER_CONTROL);
 	ddbwritel(dev, 0, INTERRUPT_ENABLE);
 	ddbwritel(dev, 0, MSI1_ENABLE);
 	if (dev->msi == 2)
@@ -102,6 +105,7 @@ static int __devinit ddb_probe(struct pci_dev *pdev,
 	if (dev == NULL)
 		return -ENOMEM;
 
+	mutex_init(&dev->mutex);
 	dev->has_dma = 1;
 	dev->pdev = pdev;
 	dev->dev = &pdev->dev;
@@ -135,6 +139,14 @@ static int __devinit ddb_probe(struct pci_dev *pdev,
 	pr_info("HW %08x REGMAP %08x\n",
 		dev->ids.hwid, dev->ids.regmapid);
 
+	if (dev->info->ns_num) {
+		int i;
+
+		ddbwritel(dev, 0, ETHER_CONTROL);
+		for (i = 0; i < 16; i++)
+			ddbwritel(dev, 0x00, TS_OUTPUT_CONTROL(i));
+		usleep_range(5000, 6000);
+	}
 	ddbwritel(dev, 0x00000000, INTERRUPT_ENABLE);
 	ddbwritel(dev, 0x00000000, MSI1_ENABLE);
 	ddbwritel(dev, 0x00000000, MSI2_ENABLE);
@@ -146,7 +158,11 @@ static int __devinit ddb_probe(struct pci_dev *pdev,
 
 #ifdef CONFIG_PCI_MSI
 	if (msi && pci_msi_enabled()) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 17, 0))
+		stat = pci_enable_msi_range(dev->pdev, 2, 2);
+#else
 		stat = pci_enable_msi_block(dev->pdev, 2);
+#endif
 		if (stat == 0) {
 			dev->msi = 1;
 			pr_info("DDBrige using 2 MSI interrupts\n");
@@ -186,6 +202,7 @@ static int __devinit ddb_probe(struct pci_dev *pdev,
 		if (stat < 0)
 			goto fail0;
 	}
+	pr_info("IRQ %08x\n", dev->pdev->irq);
 	ddbwritel(dev, 0, DMA_BASE_READ);
 	if (dev->info->type != DDB_MOD)
 		ddbwritel(dev, 0, DMA_BASE_WRITE);
@@ -198,6 +215,11 @@ static int __devinit ddb_probe(struct pci_dev *pdev,
 		ddbwritel(dev, 0x0fffff0f, INTERRUPT_ENABLE);
 		ddbwritel(dev, 0x00000000, MSI1_ENABLE);
 	}
+	if (dev->info->ns_num) {
+		ddbwritel(dev, 1, ETHER_CONTROL);
+		ddbwritel(dev, 14 + (vlan ? 4 : 0), ETHER_LENGTH);
+	}
+
 	mutex_init(&dev->lnb_lock);
 	if (ddb_i2c_init(dev) < 0)
 		goto fail1;
@@ -208,6 +230,8 @@ static int __devinit ddb_probe(struct pci_dev *pdev,
 	}
 	if (ddb_ports_attach(dev) < 0)
 		goto fail3;
+
+	ddb_nsd_attach(dev);
 
 	/* ignore if this fails */
 	ddb_device_create(dev);
@@ -256,6 +280,10 @@ static struct ddb_regset octopus_i2c = {
 	.base = 0x80,
 	.num  = 0x04,
 	.size = 0x20,
+};
+
+static struct ddb_regmap octopus_net_map = {
+	.i2c = &octopus_i2c,
 };
 
 static struct ddb_regmap octopus_map = {
@@ -331,7 +359,7 @@ static struct ddb_info ddb_v7 = {
 
 static struct ddb_info ddb_s2_48 = {
 	.type     = DDB_OCTOPUS_MAX,
-	.name     = "Digital Devices Cine S2 4/8",
+	.name     = "Digital Devices MAX S8 4/8",
 	.port_num = 4,
 	.i2c_num  = 1,
 	.board_control = 1,
@@ -380,6 +408,16 @@ static struct ddb_info ddb_mod = {
 	.temp_num = 1,
 };
 
+static struct ddb_info ddb_octopus_net = {
+	.type     = DDB_OCTONET,
+	.name     = "Digital Devices OctopusNet network DVB adapter",
+	.port_num = 4,
+	.i2c_num  = 4,
+	.ns_num   = 12,
+	.mdio_num = 1,
+	.regmap   = &octopus_net_map,
+};
+
 #define DDVID 0xdd01 /* Digital Devices Vendor ID */
 
 #define DDB_ID(_vend, _dev, _subvend, _subdev, _driverdata) { \
@@ -406,6 +444,7 @@ static const struct pci_device_id ddb_id_tbl[] __devinitconst = {
 	DDB_ID(DDVID, 0x0011, DDVID, 0x0040, ddb_ci),
 	DDB_ID(DDVID, 0x0011, DDVID, 0x0041, ddb_cis),
 	DDB_ID(DDVID, 0x0201, DDVID, 0x0001, ddb_mod),
+	DDB_ID(DDVID, 0x0320, PCI_ANY_ID, PCI_ANY_ID, ddb_octopus_net),
 	/* in case sub-ids got deleted in flash */
 	DDB_ID(DDVID, 0x0003, PCI_ANY_ID, PCI_ANY_ID, ddb_none),
 	DDB_ID(DDVID, 0x0011, PCI_ANY_ID, PCI_ANY_ID, ddb_none),
@@ -455,6 +494,6 @@ module_init(module_init_ddbridge);
 module_exit(module_exit_ddbridge);
 
 MODULE_DESCRIPTION("Digital Devices PCIe Bridge");
-MODULE_AUTHOR("Ralph Metzler, Metzler Brothers Systementwicklung");
+MODULE_AUTHOR("Ralph Metzler, Metzler Brothers Systementwicklung GbR");
 MODULE_LICENSE("GPL");
-MODULE_VERSION(DDBRIDGE_VERSION); 
+MODULE_VERSION(DDBRIDGE_VERSION);

@@ -12,6 +12,9 @@ struct mxl5xx_cfg {
 
 	u8  *fw;
 	u32  fw_len;
+
+	int (*fw_read)(void *priv, u8 *buf, u32 len);
+	void *fw_priv;
 };
 
 #if defined(CONFIG_DVB_MXL5XX) || \

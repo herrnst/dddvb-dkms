@@ -17,10 +17,12 @@ only occur at the start of the program (due to old packets inside the CI
 interface hardware and the CI module itself) and when a CI module is
 inserted or removed.
 
-Since some users have problems using with standard software which cannot use 
+Since some users have problems using standard software which cannot use 
 the CI interface in this way, there is now the redirect feature which allows 
 you to tell the driver to automatically pass the data coming from one 
 demod through a CI before offering it through the normal demux/dvr interface.
+But note that this is a kludge to support old software until they can
+use the new interface.
 See docs/redirect for more info.
 
 

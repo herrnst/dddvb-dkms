@@ -22,8 +22,8 @@
  * Or, point your browser to http://www.gnu.org/copyleft/gpl.html
  */
 
-static int ddb_dvb_input_start(struct ddb_input *input);
-static int ddb_dvb_input_stop(struct ddb_input *input);
+static int ddb_dvb_ns_input_start(struct ddb_input *input);
+static int ddb_dvb_ns_input_stop(struct ddb_input *input);
 
 static u16 calc_pcs(struct dvb_ns_params *p)
 {
@@ -154,6 +154,7 @@ static int ns_set_pid(struct dvbnss *nss, u16 pid)
 				ddbmemset(dev, off, 0x00, 0x400);
 		} else {
 			u8 val = ddbreadb(dev, off + byte);
+
 			if (pid & 0x8000)
 				ddbwriteb(dev, val | bit, off + byte);
 			else
@@ -199,7 +200,7 @@ static int ns_set_ci(struct dvbnss *nss, u8 ci)
 	ddbwritel(dev, (input->nr << 16) | 0x1c, TS_OUTPUT_CONTROL(ciport));
 	usleep_range(1, 5);
 	ddbwritel(dev, (input->nr << 16) | 0x1d, TS_OUTPUT_CONTROL(ciport));
-	dns->fe = ciport * 2;
+	dns->fe = dev->port[ciport].input[0]->nr;
 	return 0;
 }
 
@@ -258,6 +259,7 @@ static int ns_set_rtcp_msg(struct dvbnss *nss, u8 *msg, u32 len)
 	dns->p[coff + dns->rtcp_len - 1] = (len & 0xff);
 	if (len & 3) {
 		u32 pad = 4 - (len & 3);
+
 		memset(dns->p + coff + dns->rtcp_len + len, 0, pad);
 		len += pad;
 	}
@@ -427,7 +429,6 @@ static int ns_start(struct dvbnss *nss)
 	struct ddb *dev = input->port->dev;
 	u32 reg = 0x8003;
 
-
 	if (nss->params.flags & DVB_NS_RTCP)
 		reg |= 0x10;
 	if (nss->params.flags & DVB_NS_RTP_TO)
@@ -437,8 +438,8 @@ static int ns_start(struct dvbnss *nss)
 	if (nss->params.flags & DVB_NS_IPV6)
 		reg |= 0x80;
 	if (dns->fe != input->nr)
-		ddb_dvb_input_start(&dev->input[dns->fe]);
-	ddb_dvb_input_start(input);
+		ddb_dvb_ns_input_start(&dev->input[dns->fe]);
+	ddb_dvb_ns_input_start(input);
 	ddbwritel(dev, reg | (dns->fe << 8), STREAM_CONTROL(dns->nr));
 	return 0;
 }
@@ -451,9 +452,9 @@ static int ns_stop(struct dvbnss *nss)
 	struct ddb *dev = input->port->dev;
 
 	ddbwritel(dev, 0x00, STREAM_CONTROL(dns->nr));
-	ddb_dvb_input_stop(input);
+	ddb_dvb_ns_input_stop(input);
 	if (dns->fe != input->nr)
-		ddb_dvb_input_stop(&dev->input[dns->fe]);
+		ddb_dvb_ns_input_stop(&dev->input[dns->fe]);
 	return 0;
 }
 
@@ -466,10 +467,6 @@ static int netstream_init(struct ddb_input *input)
 	int i, res;
 
 	ddbmemset(dev, STREAM_PIDS(input->nr), 0x00, 0x400);
-	if (dev->ids.devid == 0x0301dd01)
-		dev->ns_num = 15;
-	else
-		dev->ns_num = 12;
 	for (i = 0; i < dev->ns_num; i++)
 		dev->ns[i].nr = i;
 	ns->priv = input;

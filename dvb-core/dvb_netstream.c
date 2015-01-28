@@ -28,20 +28,20 @@
 static ssize_t ns_write(struct file *file, const char *buf,
 			size_t count, loff_t *ppos)
 {
-	printk("%s\n", __func__);
+	pr_info("%s\n", __func__);
 	return 0;
 }
 
 static ssize_t ns_read(struct file *file, char *buf,
 		       size_t count, loff_t *ppos)
 {
-	printk("%s\n", __func__);
+	pr_info("%s\n", __func__);
 	return 0;
 }
 
 static unsigned int ns_poll(struct file *file, poll_table *wait)
 {
-	printk("%s\n", __func__);
+	pr_info("%s\n", __func__);
 	return 0;
 }
 
@@ -80,7 +80,7 @@ static int ns_open(struct inode *inode, struct file *file)
 	struct dvbnss *nss;
 
 	nss = vmalloc(sizeof(*nss));
-	if (!nss) 
+	if (!nss)
 		return -ENOMEM;
 	nss->ns = ns;
 	if (ns->alloc && ns->alloc(nss) < 0) {
@@ -104,7 +104,7 @@ static int do_ioctl(struct file *file, unsigned int cmd, void *parg)
 {
 	struct dvbnss *nss = file->private_data;
 	struct dvb_netstream *ns = nss->ns;
-	//unsigned long arg = (unsigned long) parg;
+	/*unsigned long arg = (unsigned long) parg;*/
 	int ret = 0;
 
 	switch (cmd) {
@@ -112,18 +112,16 @@ static int do_ioctl(struct file *file, unsigned int cmd, void *parg)
 	{
 		struct dvb_ns_rtcp *rtcpm = parg;
 
-		if (ns->set_rtcp_msg) {
-			//printk("%s calling NS_SET_RTCP_MSG\n", __func__);
+		if (ns->set_rtcp_msg)
 			ret = ns->set_rtcp_msg(nss, rtcpm->msg, rtcpm->len);
-		}
 		break;
 	}
 
 	case NS_SET_NET:
 		memcpy(&nss->params, parg, sizeof(nss->params));
-		if (ns->set_net) {
+		if (ns->set_net)
 			ret = ns->set_net(nss);
-		} else
+		else
 			ret = set_net(nss, (struct dvb_ns_params *) parg);
 		break;
 
@@ -145,15 +143,17 @@ static int do_ioctl(struct file *file, unsigned int cmd, void *parg)
 	case NS_SET_PACKETS:
 	{
 		struct dvb_ns_packet *packet =  parg;
-		if (ns->set_ts_packets) {
-			ret = ns->set_ts_packets(nss, packet->buf, packet->count * 188);
-		}
+
+		if (ns->set_ts_packets)
+			ret = ns->set_ts_packets(nss, packet->buf,
+						 packet->count * 188);
 		break;
 	}
 
 	case NS_INSERT_PACKETS:
 	{
 		u8 count = *(u8 *) parg;
+
 		if (ns->insert_ts_packets)
 			ret = ns->insert_ts_packets(nss, count);
 		break;
@@ -164,14 +164,14 @@ static int do_ioctl(struct file *file, unsigned int cmd, void *parg)
 		u16 pid = *(u16 *) parg;
 		u16 byte = (pid & 0x1fff) >> 3;
 		u8 bit = 1 << (pid & 7);
-		
+
 		if (pid & 0x2000) {
-			if (pid & 0x8000) 
+			if (pid & 0x8000)
 				memset(nss->pids, 0xff, 0x400);
 			else
 				memset(nss->pids, 0x00, 0x400);
 		} else {
-			if (pid & 0x8000) 
+			if (pid & 0x8000)
 				nss->pids[byte] |= bit;
 			else
 				nss->pids[byte] &= ~bit;
@@ -193,7 +193,7 @@ static int do_ioctl(struct file *file, unsigned int cmd, void *parg)
 	{
 		u8 ci = *(u8 *) parg;
 
-		if (nss->running) 
+		if (nss->running)
 			ret = -EBUSY;
 		else if (ns->set_ci)
 			ret = ns->set_ci(nss, ci);
@@ -233,7 +233,8 @@ static struct dvb_device ns_dev = {
 };
 
 
-int dvb_netstream_init(struct dvb_adapter *dvb_adapter, struct dvb_netstream *ns)
+int dvb_netstream_init(struct dvb_adapter *dvb_adapter,
+		       struct dvb_netstream *ns)
 {
 	mutex_init(&ns->mutex);
 	spin_lock_init(&ns->lock);
@@ -243,17 +244,15 @@ int dvb_netstream_init(struct dvb_adapter *dvb_adapter, struct dvb_netstream *ns
 	INIT_LIST_HEAD(&ns->nssl);
 	return 0;
 }
-
 EXPORT_SYMBOL(dvb_netstream_init);
 
 void dvb_netstream_release(struct dvb_netstream *ns)
 {
-	ns->exit=1;
+	ns->exit = 1;
 	if (ns->dvbdev->users > 1) {
 		wait_event(ns->dvbdev->wait_queue,
 			   ns->dvbdev->users == 1);
 	}
 	dvb_unregister_device(ns->dvbdev);
 }
-
 EXPORT_SYMBOL(dvb_netstream_release);

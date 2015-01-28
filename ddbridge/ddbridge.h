@@ -83,9 +83,7 @@
 #include "stv090x.h"
 #include "lnbh24.h"
 #include "drxk.h"
-#include "stv0367.h"
 #include "stv0367dd.h"
-#include "tda18212.h"
 #include "tda18212dd.h"
 #include "cxd2843.h"
 #include "cxd2099.h"
@@ -209,7 +207,7 @@ struct ddb_dvb {
 	u8                     input;
 
 	int (*i2c_gate_ctrl)(struct dvb_frontend *, int);
-	int (*set_voltage)(struct dvb_frontend* fe, fe_sec_voltage_t voltage);
+	int (*set_voltage)(struct dvb_frontend *fe, fe_sec_voltage_t voltage);
 	int (*set_input)(struct dvb_frontend *fe);
 };
 
@@ -266,28 +264,28 @@ struct ddb_port {
 #define DDB_TUNER_ISDBT_SONY_P   9
 #define DDB_TUNER_DVBS_STV0910_P 10
 #define DDB_TUNER_MXL5XX         11
+#define DDB_CI_EXTERNAL_XO2      12
+#define DDB_CI_EXTERNAL_XO2_B    13
 
-#define DDB_TUNER_XO2           16
-#define DDB_TUNER_DVBS_STV0910  16
-#define DDB_TUNER_DVBCT2_SONY   17
-#define DDB_TUNER_ISDBT_SONY    18
-#define DDB_TUNER_DVBC2T2_SONY  19
-#define DDB_TUNER_ATSC_ST       20
-#define DDB_TUNER_DVBC2T2_ST    21
+#define DDB_TUNER_XO2            16
+#define DDB_TUNER_DVBS_STV0910   16
+#define DDB_TUNER_DVBCT2_SONY    17
+#define DDB_TUNER_ISDBT_SONY     18
+#define DDB_TUNER_DVBC2T2_SONY   19
+#define DDB_TUNER_ATSC_ST        20
+#define DDB_TUNER_DVBC2T2_ST     21
 
-	/*u32                    adr;*/
 	struct ddb_input      *input[2];
 	struct ddb_output     *output;
 	struct dvb_ca_en50221 *en;
 	struct ddb_dvb         dvb[2];
 	u32                    gap;
 	u32                    obr;
+	u8                     creg;
 };
-
 
 struct mod_base {
 	u32                    frequency;
-
 	u32                    flat_start;
 	u32                    flat_end;
 };
@@ -389,7 +387,6 @@ struct ddb {
 	struct mod_base        mod_base;
 	struct mod_state       mod[10];
 
-	struct mutex           octonet_i2c_lock;
 	struct mutex           lnb_lock;
 	u32                    lnb_tone;
 };
@@ -494,6 +491,6 @@ void ddbridge_mod_rate_handler(unsigned long data);
 
 int ddbridge_flashread(struct ddb *dev, u8 *buf, u32 addr, u32 len);
 
-#define DDBRIDGE_VERSION "0.9.15"
+#define DDBRIDGE_VERSION "0.9.16"
 
 #endif

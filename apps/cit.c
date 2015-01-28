@@ -79,7 +79,7 @@ void *get_ts(void *a)
 	uint8_t buf[188*1024];
 	int len, off;
 
-	int fdi=open("/dev/dvb/adapter4/ci0", O_RDONLY);
+	int fdi=open("/dev/dvb/adapter2/ci0", O_RDONLY);
 	uint32_t d=0;
 
 	while (1) {
@@ -105,7 +105,7 @@ void send(void)
 	uint32_t c=0;
 	int fdo;
 
-	fdo=open("/dev/dvb/adapter4/ci0", O_WRONLY);
+	fdo=open("/dev/dvb/adapter2/ci0", O_WRONLY);
 
 
 	while (1) {
@@ -116,7 +116,7 @@ void send(void)
 			cts[5]=(c>>16);
 			cts[6]=(c>>8);
 			cts[7]=c;
-			write(fdo, fill, 188);
+			//write(fdo, fill, 188);
 			//printf("S %d\n", c); 
 			c++;
 			//usleep(100000+0xffff&rand());

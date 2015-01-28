@@ -36,7 +36,7 @@
 
 #include "cxd2099.h"
 
-#define BUFFER_MODE 1
+/*#define BUFFER_MODE 1*/
 
 #define MAX_BUFFER_SIZE 248
 
@@ -162,7 +162,8 @@ static int write_pccard(struct cxd *ci, u16 address, u8 *data, u8 n)
 	status = i2c_write(ci->i2c, ci->cfg.adr, addr, 3);
 	if (!status) {
 		u8 buf[256] = {3};
-		memcpy(buf+1, data, n);
+
+		memcpy(buf + 1, data, n);
 		status = i2c_write(ci->i2c, ci->cfg.adr, buf, n+1);
 	}
 	return status;
@@ -211,7 +212,8 @@ static int write_io_data(struct cxd *ci, u8 *data, u8 n)
 	status = i2c_write(ci->i2c, ci->cfg.adr, addr, 3);
 	if (!status) {
 		u8 buf[256] = {3};
-		memcpy(buf+1, data, n);
+
+		memcpy(buf + 1, data, n);
 		status = i2c_write(ci->i2c, ci->cfg.adr, buf, n + 1);
 	}
 	return 0;
@@ -339,10 +341,10 @@ static int init(struct cxd *ci)
 		if (ci->cfg.clock_mode == 2) {
 			/* bitrate*2^13/ 72000 */
 			u32 reg = ((ci->cfg.bitrate << 13) + 71999) / 72000;
-
+			
 			if (ci->cfg.polarity) {
 				CHK_ERROR(write_reg(ci, 0x09, 0x6f));
-			} else { 
+			} else {
 				CHK_ERROR(write_reg(ci, 0x09, 0x6d));
 			}
 			CHK_ERROR(write_reg(ci, 0x20, 0x08));
@@ -374,10 +376,10 @@ static int init(struct cxd *ci)
 		CHK_ERROR(write_reg(ci, 0x00, 0x31));
 
 		/* Put TS in bypass */
-		CHK_ERROR(write_regm(ci, 0x09, 0x08, 0x08)); 
+		CHK_ERROR(write_regm(ci, 0x09, 0x08, 0x08));
 		ci->cammode = -1;
 		cam_mode(ci, 0);
-	} while(0);
+	} while (0);
 	mutex_unlock(&ci->lock);
 
 	return 0;
@@ -389,7 +391,7 @@ static int read_attribute_mem(struct dvb_ca_en50221 *ca,
 	struct cxd *ci = ca->data;
 #if 0
 	if (ci->amem_read) {
-		if (address <=0 || address>1024)
+		if (address <= 0 || address > 1024)
 			return -EIO;
 		return ci->amem[address];
 	}
@@ -405,11 +407,11 @@ static int read_attribute_mem(struct dvb_ca_en50221 *ca,
 	return ci->amem[address];
 #else
 	u8 val;
+
 	mutex_lock(&ci->lock);
 	set_mode(ci, 1);
 	read_pccard(ci, address, &val, 1);
 	mutex_unlock(&ci->lock);
-	/*printk("%02x:%02x\n", address,val);*/
 	return val;
 #endif
 }
@@ -455,11 +457,10 @@ static int slot_reset(struct dvb_ca_en50221 *ca, int slot)
 {
 	struct cxd *ci = ca->data;
 
-	if (ci->cammode) 
+	if (ci->cammode)
 		read_data(ca, slot, ci->rbuf, 0);
 
 	mutex_lock(&ci->lock);
-	printk("slot_reset\n");
 #if 0
 	write_reg(ci, 0x00, 0x21);
 	write_reg(ci, 0x06, 0x1F);
@@ -476,20 +477,20 @@ static int slot_reset(struct dvb_ca_en50221 *ca, int slot)
 	write_reg(ci, 0x00, 0x31);
 	write_regm(ci, 0x20, 0x80, 0x80);
 	write_reg(ci, 0x03, 0x02);
-	ci->ready=0;
+	ci->ready = 0;
 #endif
 #endif
-	ci->mode=-1;
+	ci->mode = -1;
 	{
 		int i;
 #if 0
 		u8 val;
 #endif
-		for (i=0; i<100;i++) {
-			msleep(10);
+		for (i = 0; i < 100; i++) {
+			msleep(20);
 #if 0
-			read_reg(ci, 0x06,&val);
-			printk(KERN_INFO "%d:%02x\n", i, val);
+			read_reg(ci, 0x06, &val);
+			pr_info(KERN_INFO "%d:%02x\n", i, val);
 			if (!(val&0x10))
 				break;
 #else
@@ -507,15 +508,15 @@ static int slot_shutdown(struct dvb_ca_en50221 *ca, int slot)
 {
 	struct cxd *ci = ca->data;
 
-	printk(KERN_INFO "slot_shutdown\n");
-	if (ci->cammode) 
+	pr_info("slot_shutdown\n");
+	if (ci->cammode)
 		read_data(ca, slot, ci->rbuf, 0);
 	mutex_lock(&ci->lock);
 	write_reg(ci, 0x00, 0x21);
 	write_reg(ci, 0x06, 0x1F);
-	msleep(300); 
+	msleep(300);
 
-	write_regm(ci, 0x09, 0x08, 0x08); 
+	write_regm(ci, 0x09, 0x08, 0x08);
 	write_regm(ci, 0x20, 0x80, 0x80); /* Reset CAM Mode */
 	write_regm(ci, 0x06, 0x07, 0x07); /* Clear IO Mode */
 
@@ -547,22 +548,17 @@ static int campoll(struct cxd *ci)
 		return 0;
 	write_reg(ci, 0x05, istat);
 
-	if (istat & 0x40) {
+	if (istat & 0x40)
 		ci->dr = 1;
-		/*printk(KERN_INFO "DR\n");*/
-	}
-	if (istat & 0x20) {
-		/*printk(KERN_INFO "WC\n");*/
+	if (istat & 0x20)
 		ci->write_busy = 0;
-	}
-
 	if (istat & 2) {
 		u8 slotstat;
 
 		read_reg(ci, 0x01, &slotstat);
 		if (!(2 & slotstat)) {
 			if (!ci->slot_stat) {
-				ci->slot_stat |= 
+				ci->slot_stat |=
 					DVB_CA_EN50221_POLL_CAM_PRESENT;
 				write_regm(ci, 0x03, 0x08, 0x08);
 			}
@@ -571,14 +567,14 @@ static int campoll(struct cxd *ci)
 			if (ci->slot_stat) {
 				ci->slot_stat = 0;
 				write_regm(ci, 0x03, 0x00, 0x08);
-				printk(KERN_INFO "NO CAM\n");
+				pr_info("NO CAM\n");
 				ci->ready = 0;
 			}
 		}
-		if (istat& 8 &&
+		if ((istat & 8) &&
 		    (ci->slot_stat == DVB_CA_EN50221_POLL_CAM_PRESENT)) {
-			ci->ready=1;
-			ci->slot_stat|=DVB_CA_EN50221_POLL_CAM_READY;
+			ci->ready = 1;
+			ci->slot_stat |= DVB_CA_EN50221_POLL_CAM_READY;
 		}
 	}
 	return 0;
@@ -598,7 +594,7 @@ static int poll_slot_status(struct dvb_ca_en50221 *ca, int slot, int open)
 	return ci->slot_stat;
 }
 
-static int read_data(struct dvb_ca_en50221* ca, int slot, u8 *ebuf, int ecount)
+static int read_data(struct dvb_ca_en50221 *ca, int slot, u8 *ebuf, int ecount)
 {
 	struct cxd *ci = ca->data;
 	u8 msb, lsb;
@@ -614,7 +610,7 @@ static int read_data(struct dvb_ca_en50221* ca, int slot, u8 *ebuf, int ecount)
 	mutex_lock(&ci->lock);
 	read_reg(ci, 0x0f, &msb);
 	read_reg(ci, 0x10, &lsb);
-	len = ((u16)msb<<8)|lsb;
+	len = ((u16)msb<<8) | lsb;
 	if (len > ecount || len < 2) {
 		/* read it anyway or cxd may hang */
 		read_block(ci, 0x12, ci->rbuf, len);
@@ -625,27 +621,26 @@ static int read_data(struct dvb_ca_en50221* ca, int slot, u8 *ebuf, int ecount)
 	ci->dr = 0;
 	mutex_unlock(&ci->lock);
 #if 0
-	printk(KERN_INFO "read_data %d\n", len);
+	pr_info("read_data %d\n", len);
 	{
 		int i;
 
-		for (i=0; i< len; i++)
-			printk("%02x ", ebuf[i]);
-		printk("\n");
+		for (i = 0; i < len; i++)
+			pr_info("%02x ", ebuf[i]);
+		pr_info("\n");
 	}
 #endif
 	return len;
 }
 
 #ifdef BUFFER_MODE
-static int write_data(struct dvb_ca_en50221* ca, int slot, u8 *ebuf, int ecount)
+static int write_data(struct dvb_ca_en50221 *ca, int slot, u8 *ebuf, int ecount)
 {
 	struct cxd *ci = ca->data;
 
 	if (ci->write_busy)
 		return -EAGAIN;
 	mutex_lock(&ci->lock);
-	/*printk("write_data %d\n", ecount);*/
 	write_reg(ci, 0x0d, ecount >> 8);
 	write_reg(ci, 0x0e, ecount & 0xff);
 	write_block(ci, 0x11, ebuf, ecount);
@@ -668,18 +663,17 @@ static struct dvb_ca_en50221 en_templ = {
 	.read_data           = read_data,
 	.write_data          = write_data,
 #endif
-
 };
 
-struct dvb_ca_en50221 *cxd2099_attach(struct cxd2099_cfg *cfg, 
+struct dvb_ca_en50221 *cxd2099_attach(struct cxd2099_cfg *cfg,
 				      void *priv,
 				      struct i2c_adapter *i2c)
 {
 	struct cxd *ci = 0;
 	u8 val;
 
-	if (i2c_read_reg(i2c, cfg->adr, 0, &val)<0) {
-		printk("No CXD2099 detected at %02x\n", cfg->adr);
+	if (i2c_read_reg(i2c, cfg->adr, 0, &val) < 0) {
+		pr_info("No CXD2099 detected at %02x\n", cfg->adr);
 		return 0;
 	}
 
