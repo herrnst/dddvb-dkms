@@ -390,6 +390,11 @@ static int set_parameters(struct dvb_frontend *fe)
 #endif
 
 	
+	if (p->frequency < 950000 || p->frequency > 2150000)
+		return -EINVAL;
+	if (p->symbol_rate < 1000000 || p->symbol_rate > 45000000)
+		return -EINVAL;
+
 	CfgDemodAbortTune(state);
 	
 	switch (p->delivery_system) {
