@@ -1,8 +1,9 @@
 /*
  * ddbridge-i2c.c: Digital Devices bridge i2c driver
  *
- * Copyright (C) 2010-2014 Digital Devices GmbH
- *                         Ralph Metzler <rmetzler@digitaldevices.de>
+ * Copyright (C) 2010-2015 Digital Devices GmbH
+ *                         Ralph Metzler <rjkm@metzlerbros.de>
+ *                         Marcus Metzler <mocm@metzlerbros.de>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -138,8 +139,9 @@ static int ddb_i2c_master_xfer(struct i2c_adapter *adapter,
 	struct ddb *dev = i2c->dev;
 	u8 addr = 0;
 	
-	if (num)
-		addr = msg[0].addr;
+	if (num != 1 && num != 2)
+		return -EIO;
+	addr = msg[0].addr;
 	if (msg[0].len > i2c->bsize)
 		return -EIO;
 	if (num == 2 && msg[1].flags & I2C_M_RD &&
@@ -206,15 +208,15 @@ static int ddb_i2c_add(struct ddb *dev, struct ddb_i2c *i2c,
 {
 	struct i2c_adapter *adap;
 	
-	i2c->nr = num;
+	i2c->nr = i;
 	i2c->dev = dev;
 	i2c->link = link;
 	i2c->bsize = regmap->i2c_buf->size;
 	i2c->wbuf = DDB_LINK_TAG(link) | (regmap->i2c_buf->base + i2c->bsize * i);
-	i2c->rbuf = i2c->wbuf + i2c->bsize / 2;
+	i2c->rbuf = i2c->wbuf;// + i2c->bsize / 2;
 	i2c->regs = DDB_LINK_TAG(link) | (regmap->i2c->base + regmap->i2c->size * i);
 	ddbwritel(dev, I2C_SPEED_100, i2c->regs + I2C_TIMING);
-	ddbwritel(dev, ((i2c->rbuf & 0xfff) << 16) | (i2c->wbuf & 0xfff),
+	ddbwritel(dev, ((i2c->rbuf & 0xffff) << 16) | (i2c->wbuf & 0xffff),
 		  i2c->regs + I2C_TASKADDRESS);
 	init_completion(&i2c->completion);
 	
@@ -248,13 +250,16 @@ static int ddb_i2c_init(struct ddb *dev)
 		regmap = dev->link[l].info->regmap;
 		if (!regmap || !regmap->i2c)
 			continue;
-		for (i = 0; i < regmap->i2c->num; i++, num++) {
+		for (i = 0; i < regmap->i2c->num; i++) {
+			if (!(dev->link[l].info->i2c_mask & (1 << i)))
+				continue;
 			i2c = &dev->i2c[num];
 			dev->handler_data[i + l * 32] = (unsigned long) i2c;
 			dev->handler[i + l * 32] = i2c_handler;
 			stat = ddb_i2c_add(dev, i2c, regmap, l, i, num);
 			if (stat)
 				break;
+			num++;
 		}
 	}
 	if (stat) {

@@ -1,3 +1,9 @@
+0.9.18 2015.05.05
+- support GT links
+- fixes for mxl5xx tuning
+  (prevent simultaneous tuning inside 100ms)
+- allow dynamic fmode change
+
 0.9.18 (beta) 2015.01.24
 - initial support of GT links
 - fixes for mxl5xx tuning

@@ -7,7 +7,8 @@
 struct stv0367_cfg {
 	u8  adr;
 	u32 xtal;
-	u32 ts_mode;
+	u8 parallel;
+	u8 cont_clock;
 };
 
 

@@ -72,6 +72,8 @@ enum {
 	ATMEL_AT45DB642D = 1,
 	SSTI_SST25VF016B = 2,
 	SSTI_SST25VF032B = 3,
+	SSTI_SST25VF064C = 4,
+	SPANSION_S25FL116K = 5,
 };
 
 
@@ -114,6 +116,10 @@ int FlashDetect(int dev)
 		r = SSTI_SST25VF032B; 
 	else if( Id[0] == 0x1F && Id[1] == 0x28 )
 		r = ATMEL_AT45DB642D; 
+	else if( Id[0] == 0xBF && Id[1] == 0x25 && Id[2] == 0x4B )
+		r = SSTI_SST25VF064C; 
+	else if( Id[0] == 0x01 && Id[1] == 0x40 && Id[2] == 0x15 )
+		r = SPANSION_S25FL116K; 
 	else 
 		r = UNKNOWN_FLASH;
 	
@@ -127,9 +133,12 @@ int FlashDetect(int dev)
         case SSTI_SST25VF016B:
 		printf("Flash: SSTI  SST25VF016B 16 MBit\n");
 		break;
-        case SSTI_SST25VF032B: 
-		printf("Flash: SSTI  SST25VF032B 32 MBit\n");
-		break;
+        case SSTI_SST25VF032B:
+		printf("Flash: SSTI  SST25VF032B 32 MBit\n"); break;
+        case SSTI_SST25VF064C:
+		printf("Flash: SSTI  SST25VF064C 64 MBit\n"); break;
+        case SPANSION_S25FL116K:
+		printf("Flash: SPANSION S25FL116K 16 MBit\n"); break;
 	}
 	return r;
 }
@@ -199,7 +208,99 @@ int FlashWriteAtmel(int dev,uint32_t FlashOffset, uint8_t *Buffer,int BufferSize
     return err;
 }
 
-int FlashWriteSSTI(int dev, uint32_t FlashOffset, uint8_t *Buffer, int BufferSize)
+
+int FlashWritePageMode(int dev, uint32_t FlashOffset, uint8_t *Buffer, int BufferSize, uint8_t LockBits)
+{
+	int err = 0, i, j;
+	uint8_t Cmd[260];
+	
+	if( (BufferSize % 4096) != 0 )
+		return -1;   // Must be multiple of sector size
+	
+	do {
+		Cmd[0] = 0x50;  // EWSR
+		err = flashio(dev, Cmd,1,NULL,0);
+		if( err < 0 ) break;
+		
+		Cmd[0] = 0x01;  // WRSR
+		Cmd[1] = 0x00;  // BPx = 0, Unlock all blocks
+		err = flashio(dev, Cmd,2,NULL,0);
+		if( err < 0 ) break;
+		
+		for(i = 0; i < BufferSize; i += 4096 ) {
+			if( (i & 0xFFFF) == 0 )	{
+				printf(" Erase    %08x\n",FlashOffset + i);
+			}
+			
+			Cmd[0] = 0x06;  // WREN
+			err = flashio(dev, Cmd,1,NULL,0);
+			if( err < 0 ) break;
+			
+			Cmd[0] = 0x20;  // Sector erase ( 4Kb)
+			Cmd[1] = ( (( FlashOffset + i ) >> 16) & 0xFF );
+			Cmd[2] = ( (( FlashOffset + i ) >>  8) & 0xFF );
+			Cmd[3] = 0x00;
+			err = flashio(dev, Cmd,4,NULL,0);
+			if( err < 0 ) break;
+			
+			while(1)
+			{
+				Cmd[0] = 0x05;  // RDRS
+				err = flashio(dev, Cmd,1,&Cmd[0],1);
+				if( err < 0 ) break;
+				if( (Cmd[0] & 0x01) == 0 ) break;
+			}
+			if( err < 0 ) break;
+			
+		}
+		if( err < 0 ) break;
+		
+		
+		for (j = BufferSize - 256; j >= 0; j -= 256 )
+		{
+			if( (j & 0xFFFF) == 0 )
+			{
+				printf(" Programm %08x\n",FlashOffset + j);
+			}
+			
+			Cmd[0] = 0x06;  // WREN
+			err = flashio(dev, Cmd,1,NULL,0);
+			if( err < 0 ) break;
+			
+			Cmd[0] = 0x02;  // PP
+			Cmd[1] = ( (( FlashOffset + j ) >> 16) & 0xFF );
+			Cmd[2] = ( (( FlashOffset + j ) >>  8) & 0xFF );
+			Cmd[3] = 0x00;
+			memcpy(&Cmd[4],&Buffer[j],256);
+			err = flashio(dev, Cmd,260,NULL,0);
+			if( err < 0 ) break;
+			
+			while(1)
+			{
+				Cmd[0] = 0x05;  // RDRS
+				err = flashio(dev, Cmd,1,&Cmd[0],1);
+				if( err < 0 ) break;
+				if( (Cmd[0] & 0x01) == 0 ) break;
+			}
+			if( err < 0 ) break;
+			
+		}
+		if( err < 0 ) break;
+		
+		Cmd[0] = 0x50;  // EWSR
+		err = flashio(dev, Cmd,1,NULL,0);
+		if( err < 0 ) break;
+		
+		Cmd[0] = 0x01;  // WRSR
+		Cmd[1] = LockBits;  // BPx = 0, Lock all blocks
+		err = flashio(dev, Cmd,2,NULL,0);
+		
+	} while(0);
+	return err;
+}
+
+
+int FlashWriteSSTI_B(int dev, uint32_t FlashOffset, uint8_t *Buffer, int BufferSize)
 {
     int err = 0;
     uint8_t Cmd[6];
@@ -420,10 +521,20 @@ int main(int argc, char **argv)
 		SectorSize = 4096; 
 		FlashSize = 0x400000; 
 		break;
+        case SSTI_SST25VF064C:
+		SectorSize = 4096;
+		FlashSize = 0x800000;
+		break;
+        case SPANSION_S25FL116K:
+		SectorSize = 4096;
+		FlashSize = 0x200000;
+		break;
+	default:
+		return 0;
 	}
 
 	get_id(ddb, &ddbid);
-#if 0
+#if 1
 	printf("%04x %04x %04x %04x %08x %08x\n",
 	       ddbid.vendor, ddbid.device,
 	       ddbid.subvendor, ddbid.subdevice,
@@ -447,26 +558,33 @@ int main(int argc, char **argv)
 		type = 4;
 	if (ddbid.device == 0x320)
 		type = 5;
+	if (ddbid.device == 0x13)
+		type = 6;
 	
 	if (!SectorSize)
 		return 0;
 	
 	if (jump) {
-		uint8_t jdat[] = {0xFF,0xFF,0xFF,0xFF, 0xFF,0xFF,0xFF,0xFF, 
-				  0xff,0xFF,0xFF,0xFF, 0xFF,0xFF,0xFF,0xFF,
-				  0xBD,0xB3,0xC4,0x00, 0x00,0x00,0x00,0x00,
-				  0x00,0x00,0xFE,0x00, 0x00,0x00,0x03,0x20,
-				  0x00,0x00,0xFF,0xFF, 0xFF,0xFF,0xFF,0xFF,
-				  0xFF,0xFF,0xFF,0xFF, 0xFF,0xFF,0xFF,0xFF,};
+		uint32_t Jump = 0x200000;
+		
 		BufferSize = SectorSize;
-		FlashOffset = 0x3ff000;
+		FlashOffset = FlashSize - SectorSize;
 		buffer = malloc(BufferSize);
 		if (!buffer) {
 			printf("out of memory\n");
 			return 0;
 		}
-		memset(buffer,0xFF,BufferSize);
-		memcpy(buffer+0xf00, jdat, sizeof(jdat));
+		memset(buffer, 0xFF, BufferSize);
+		memset(&buffer[BufferSize - 256 + 0x10], 0x00, 16);
+
+		buffer[BufferSize - 256 + 0x10] = 0xbd;
+		buffer[BufferSize - 256 + 0x11] = 0xb3;
+		buffer[BufferSize - 256 + 0x12] = 0xc4;
+		buffer[BufferSize - 256 + 0x1a] = 0xfe;
+		buffer[BufferSize - 256 + 0x1e] = 0x03;
+		buffer[BufferSize - 256 + 0x1f] = ( ( Jump >> 16 ) & 0xFF );
+		buffer[BufferSize - 256 + 0x20] = ( ( Jump >>  8 ) & 0xFF );
+		buffer[BufferSize - 256 + 0x21] = ( ( Jump       ) & 0xFF );
 	} else if (svid) {
 		BufferSize = SectorSize;
 		FlashOffset = 0;
@@ -488,7 +606,6 @@ int main(int argc, char **argv)
 		char *fname;
 
 		switch (type) {
-		default:
 		case 0:
 			fname="DVBBridgeV1B_DVBBridgeV1B.bit";
 			printf("Octopus\n");
@@ -508,6 +625,13 @@ int main(int argc, char **argv)
 		case 4:
 			fname="DVBBridgeV2A_DD01_0007_MXL.bit";
 			printf("Octopus 4/8\n");
+			break;
+		case 6:
+			fname="DVBBridgeV2B_DD01_0013_PRO.fpga";
+			printf("Octopus PRO\n");
+			break;
+		default:
+			printf("UNKNOWN\n");
 			break;
 		}
 		fh = open(fname, O_RDONLY);
@@ -560,13 +684,19 @@ int main(int argc, char **argv)
 	if (!force && sure()<0)
 		return 0;
 	switch(Flash) {
-        case ATMEL_AT45DB642D: 
-		err = FlashWriteAtmel(ddb, FlashOffset, buffer, BufferSize); 
+        case ATMEL_AT45DB642D:
+		err = FlashWriteAtmel(ddb,FlashOffset,buffer,BufferSize);
 		break;
         case SSTI_SST25VF016B: 
-        case SSTI_SST25VF032B: 
-		err = FlashWriteSSTI(ddb, FlashOffset, buffer, BufferSize); 
+        case SSTI_SST25VF032B:
+		err = FlashWriteSSTI_B(ddb,FlashOffset,buffer,BufferSize);
 		break;
+        case SSTI_SST25VF064C:
+		err = FlashWritePageMode(ddb,FlashOffset,buffer,BufferSize,0x3C);
+		break;
+        case SPANSION_S25FL116K:
+		err = FlashWritePageMode(ddb,FlashOffset,buffer,BufferSize,0x1C);
+		break;            
 	}
 	
 	if (err < 0) 

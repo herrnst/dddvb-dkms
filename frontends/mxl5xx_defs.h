@@ -605,6 +605,20 @@ typedef struct
   int                        enable;               // Enable or Disable MPEG OUT
   MXL_HYDRA_MPEG_CLK_TYPE_E         mpegClkType;          // Continuous or gapped
   MXL_HYDRA_MPEG_CLK_FMT_E          mpegClkPol;           // MPEG Clk polarity
+/*
+ * Defines for the Maxlinear MX58x family of tuners/demods
+ *
+ * Copyright (C) 2014 Digital Devices GmbH
+ *
+ * based on code:
+ * Copyright (c) 2011-2013 MaxLinear, Inc. All rights reserved
+ * which was released under GPL V2
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * version 2, as published by the Free Software Foundation.
+ */
+
   u8                             maxMpegClkRate;       // Max MPEG Clk rate (0  104 MHz, 139 MHz) 
   MXL_HYDRA_MPEG_CLK_PHASE_E        mpegClkPhase;         // MPEG Clk phase 
   MXL_HYDRA_MPEG_DATA_FMT_E         lsbOrMsbFirst;        // LSB first or MSB first in TS transmission

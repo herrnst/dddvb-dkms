@@ -36,9 +36,7 @@
 
 #include "cxd2099.h"
 
-/*#define BUFFER_MODE 1*/
-
-#define MAX_BUFFER_SIZE 248
+//#define BUFFER_MODE 1
 
 static int read_data(struct dvb_ca_en50221 *ca, int slot, u8 *ebuf, int ecount);
 
@@ -83,7 +81,7 @@ static int i2c_write_reg(struct i2c_adapter *adapter, u8 adr,
 }
 
 static int i2c_write(struct i2c_adapter *adapter, u8 adr,
-		     u8 *data, u8 len)
+		     u8 *data, u16 len)
 {
 	struct i2c_msg msg = {.addr = adr, .flags = 0, .buf = data, .len = len};
 
@@ -110,13 +108,13 @@ static int i2c_read_reg(struct i2c_adapter *adapter, u8 adr,
 }
 
 static int i2c_read(struct i2c_adapter *adapter, u8 adr,
-		    u8 reg, u8 *data, u8 n)
+		    u8 reg, u8 *data, u16 n)
 {
 	struct i2c_msg msgs[2] = {{.addr = adr, .flags = 0,
-				 .buf = &reg, .len = 1},
-				{.addr = adr, .flags = I2C_M_RD,
-				 .buf = data, .len = n} };
-
+				   .buf = &reg, .len = 1},
+				  {.addr = adr, .flags = I2C_M_RD,
+				   .buf = data, .len = n} };
+	
 	if (i2c_transfer(adapter, msgs, 2) != 2) {
 		pr_err("error in i2c_read\n");
 		return -1;
@@ -124,7 +122,7 @@ static int i2c_read(struct i2c_adapter *adapter, u8 adr,
 	return 0;
 }
 
-static int read_block(struct cxd *ci, u8 adr, u8 *data, u8 n)
+static int read_block(struct cxd *ci, u8 adr, u8 *data, u16 n)
 {
 	int status = 0;
 
@@ -132,7 +130,19 @@ static int read_block(struct cxd *ci, u8 adr, u8 *data, u8 n)
 		status = i2c_write_reg(ci->i2c, ci->cfg.adr, 0, adr);
 	if (!status) {
 		ci->lastaddress = adr;
-		status = i2c_read(ci->i2c, ci->cfg.adr, 1, data, n);
+
+		while (n) {
+			int len = n;
+			
+			if (ci->cfg.max_i2c &&
+			    len > ci->cfg.max_i2c)
+				len = ci->cfg.max_i2c;
+			status = i2c_read(ci->i2c, ci->cfg.adr, 1, data, len);
+			if (status)
+				return status;
+			data += len;
+			n -= len;
+		}
 	}
 	return status;
 }
@@ -193,7 +203,7 @@ static int write_io(struct cxd *ci, u16 address, u8 val)
 }
 
 #if 0
-static int read_io_data(struct cxd *ci, u8 *data, u8 n)
+static int read_io_data(struct cxd *ci, u8 *data, u16 n)
 {
 	int status;
 	u8 addr[3] = { 2, 0, 0 };
@@ -204,7 +214,7 @@ static int read_io_data(struct cxd *ci, u8 *data, u8 n)
 	return 0;
 }
 
-static int write_io_data(struct cxd *ci, u8 *data, u8 n)
+static int write_io_data(struct cxd *ci, u8 *data, u16 n)
 {
 	int status;
 	u8 addr[3] = {2, 0, 0};
@@ -244,18 +254,32 @@ static int write_reg(struct cxd *ci, u8 reg, u8 val)
 }
 
 #ifdef BUFFER_MODE
-static int write_block(struct cxd *ci, u8 adr, u8 *data, int n)
+static int write_block(struct cxd *ci, u8 adr, u8 *data, u16 n)
 {
 	int status = 0;
 	u8 *buf = ci->wbuf;
 
 	if (ci->lastaddress != adr)
 		status = i2c_write_reg(ci->i2c, ci->cfg.adr, 0, adr);
-	if (!status) {
-		ci->lastaddress = adr;
-		buf[0] = 1;
-		memcpy(buf + 1, data, n);
-		status = i2c_write(ci->i2c, ci->cfg.adr, buf, n + 1);
+	if (status)
+		return status;
+	printk("write_block %d\n", n);
+
+	ci->lastaddress = adr;
+	buf[0] = 1;
+	while (n) {
+		int len = n;
+		
+		if (ci->cfg.max_i2c &&
+		    len + 1 > ci->cfg.max_i2c)
+			len = ci->cfg.max_i2c - 1;
+		printk("write %d\n", len);
+		memcpy(buf + 1, data, len);
+		status = i2c_write(ci->i2c, ci->cfg.adr, buf, len + 1);
+		if (status)
+			return status;
+		n -= len;
+		data += len;
 	}
 	return status;
 }
@@ -610,7 +634,7 @@ static int read_data(struct dvb_ca_en50221 *ca, int slot, u8 *ebuf, int ecount)
 	mutex_lock(&ci->lock);
 	read_reg(ci, 0x0f, &msb);
 	read_reg(ci, 0x10, &lsb);
-	len = ((u16)msb<<8) | lsb;
+	len = ((u16) msb << 8) | lsb;
 	if (len > ecount || len < 2) {
 		/* read it anyway or cxd may hang */
 		read_block(ci, 0x12, ci->rbuf, len);
@@ -634,6 +658,7 @@ static int read_data(struct dvb_ca_en50221 *ca, int slot, u8 *ebuf, int ecount)
 }
 
 #ifdef BUFFER_MODE
+
 static int write_data(struct dvb_ca_en50221 *ca, int slot, u8 *ebuf, int ecount)
 {
 	struct cxd *ci = ca->data;

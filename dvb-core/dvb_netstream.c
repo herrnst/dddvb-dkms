@@ -1,8 +1,9 @@
 /*
  * dvb_netstream.c: support for DVB to network streaming hardware
  *
- * Copyright (C) 2012-2013 Digital Devices GmbH
- *                         Ralph Metzler <rmetzler@digitaldevices.de>
+ * Copyright (C) 2012-2013 Marcus and Ralph Metzler
+ *                         for Digital Devices GmbH
+ *                         
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License

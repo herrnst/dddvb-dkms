@@ -1,7 +1,9 @@
 /*
  * Driver for the ST STV0910 DVB-S/S2 demodulator.
  *
- * Copyright (C) 2014 Digital Devices GmbH
+ * Copyright (C) 2014-2015 Ralph Metzler <rjkm@metzlerbros.de>
+ *                         Marcus Metzler <mocm@metzlerbros.de>
+ *                         developed for Digital Devices GmbH
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License

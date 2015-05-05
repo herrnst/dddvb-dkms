@@ -1,8 +1,9 @@
 /*
  * octonet.c: Digital Devices network tuner driver
  *
- * Copyright (C) 2012-14 Digital Devices GmbH
- *                       Ralph Metzler <rmetzler@digitaldevices.de>
+ * Copyright (C) 2012-15 Digital Devices GmbH
+ *                       Marcus Metzler <mocm@metzlerbros.de>
+ *                       Ralph Metzler <rjkm@metzlerbros.de>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -67,6 +68,7 @@ static struct ddb_info ddb_octonet = {
 	.name     = "Digital Devices OctopusNet network DVB adapter",
 	.regmap   = &octopus_net_map,
 	.port_num = 4,
+	.i2c_mask = 0x0f,
 	.ns_num   = 12,
 	.mdio_num = 1,
 };
@@ -76,17 +78,20 @@ static struct ddb_info ddb_octonet_jse = {
 	.name     = "Digital Devices OctopusNet network DVB adapter JSE",
 	.regmap   = &octopus_net_map,
 	.port_num = 4,
+	.i2c_mask = 0x0f,
 	.ns_num   = 15,
 	.mdio_num = 1,
 };
 
-static struct ddb_info ddb_octonet_ser = {
+static struct ddb_info ddb_octonet_gtl = {
 	.type     = DDB_OCTONET,
 	.name     = "Digital Devices OctopusNet GTL",
 	.regmap   = &octopus_net_gtl,
-	.port_num = 1,
+	.port_num = 4,
+	.i2c_mask = 0x05,
 	.ns_num   = 12,
 	.mdio_num = 1,
+	.con_clock = 1,
 };
 
 static struct ddb_info ddb_octonet_tbd = {
@@ -167,7 +172,7 @@ static int __init octonet_probe(struct platform_device *pdev)
 	else if (dev->ids.devid == 0x0301dd01)
 		dev->link[0].info = &ddb_octonet_jse;
 	else if (dev->ids.devid == 0x0307dd01)
-		dev->link[0].info = &ddb_octonet_ser;
+		dev->link[0].info = &ddb_octonet_gtl;
 	else
 		dev->link[0].info = &ddb_octonet_tbd;
 		

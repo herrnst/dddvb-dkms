@@ -1,11 +1,13 @@
 /*
  * Driver for the Maxlinear MX58x family of tuners/demods
  *
- * Copyright (C) 2014 Digital Devices GmbH
+ * Copyright (C) 2014-2015 Ralph Metzler <rjkm@metzlerbros.de>
+ *                         Marcus Metzler <mocm@metzlerbros.de>
+ *                         developed for Digital Devices GmbH
  *
  * based on code:
  * Copyright (c) 2011-2013 MaxLinear, Inc. All rights reserved
- + released under GPL V2
+ * which was released under GPL V2
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -61,13 +63,25 @@ struct mxl_base {
 
 	u8                   adr;
 	struct i2c_adapter  *i2c;
+
 	u32                  count;
 	u32                  type;
+	u32                  sku_type;
 	u32                  chipversion;
 	u32                  clock;
+	
+	u8                  *ts_map;
+	u8                   can_clkout;
+	u8                   chan_bond;
+	u8                   demod_num;
+	u8                   tuner_num;
 
+	unsigned long        next_tune;
+	
 	struct mutex         i2c_lock;
 	struct mutex         status_lock;
+	struct mutex         tune_lock;
+
 	u8                   buf[MXL_HYDRA_OEM_MAX_CMD_BUFF_LEN];
 
 	u32                  cmd_size;
@@ -299,7 +313,6 @@ static void extract_from_mnemonic(u32 regAddr, u8 lsbPos, u8 width,
 
 static int firmware_is_alive(struct mxl *state)
 {
-	int status;
 	u32 hb0, hb1;
 
 	if (read_register(state, HYDRA_HEAR_BEAT, &hb0))
@@ -335,6 +348,7 @@ static int get_algo(struct dvb_frontend *fe)
 	return DVBFE_ALGO_HW;
 }
 
+/*
 static int cfg_scrambler(struct mxl *state)
 {
 	u8 buf[26] = {
@@ -358,53 +372,46 @@ static int CfgDemodAbortTune(struct mxl *state)
 	BUILD_HYDRA_CMD(MXL_HYDRA_ABORT_TUNE_CMD, MXL_CMD_WRITE, cmdSize, &abortTuneCmd, cmdBuff);
 	return send_command(state, cmdSize + MXL_HYDRA_CMD_HEADER_SIZE, &cmdBuff[0]);
 }
+*/
 
 static int send_master_cmd(struct dvb_frontend *fe,
 			   struct dvb_diseqc_master_cmd *cmd)
 {
-	struct mxl *state = fe->demodulator_priv;
+	/*struct mxl *state = fe->demodulator_priv;*/
 
-	return CfgDemodAbortTune(state);
+	return 0; /*CfgDemodAbortTune(state);*/
 }
 
 static int set_parameters(struct dvb_frontend *fe)
 {
-	int status = 0;
 	struct mxl *state = fe->demodulator_priv;
 	struct dtv_frontend_properties *p = &fe->dtv_property_cache;
 	MXL_HYDRA_DEMOD_PARAM_T demodChanCfg;
 	u8 cmdSize = sizeof(demodChanCfg);
 	u8 cmdBuff[MXL_HYDRA_OEM_MAX_CMD_BUFF_LEN];
-	MXL_HYDRA_DEMOD_ID_E demodId = state->demod;
-#if 0
-	MXL_REG_FIELD_T xpt_enable_dss_input[MXL_HYDRA_DEMOD_MAX] = {
-		{XPT_INP_MODE_DSS0}, {XPT_INP_MODE_DSS1},
-		{XPT_INP_MODE_DSS2}, {XPT_INP_MODE_DSS3},
-		{XPT_INP_MODE_DSS4}, {XPT_INP_MODE_DSS5},
-		{XPT_INP_MODE_DSS6}, {XPT_INP_MODE_DSS7} };
-	MXL_REG_FIELD_T xpt_enable_dvb_input[MXL_HYDRA_DEMOD_MAX] = {
-		{XPT_ENABLE_INPUT0}, {XPT_ENABLE_INPUT1},
-		{XPT_ENABLE_INPUT2}, {XPT_ENABLE_INPUT3},
-		{XPT_ENABLE_INPUT4}, {XPT_ENABLE_INPUT5},
-		{XPT_ENABLE_INPUT6}, {XPT_ENABLE_INPUT7} };
-#endif
-
+	u32 srange = 10;
+	int stat;
 	
 	if (p->frequency < 950000 || p->frequency > 2150000)
 		return -EINVAL;
 	if (p->symbol_rate < 1000000 || p->symbol_rate > 45000000)
 		return -EINVAL;
-
-	CfgDemodAbortTune(state);
 	
+	//CfgDemodAbortTune(state);
+
 	switch (p->delivery_system) {
 	case SYS_DSS:
 		demodChanCfg.standard = MXL_HYDRA_DSS;
+		demodChanCfg.rollOff = MXL_HYDRA_ROLLOFF_AUTO;
 		break;
 	case SYS_DVBS:
+		srange = p->symbol_rate / 1000000;
+		if (srange > 10)
+			srange = 10;
 		demodChanCfg.standard = MXL_HYDRA_DVBS;
-		demodChanCfg.rollOff = MXL_HYDRA_ROLLOFF_AUTO;
+		demodChanCfg.rollOff = MXL_HYDRA_ROLLOFF_0_35;
 		demodChanCfg.modulationScheme = MXL_HYDRA_MOD_QPSK;
+		demodChanCfg.pilots = MXL_HYDRA_PILOTS_OFF;
 		break;
 	case SYS_DVBS2:
 		demodChanCfg.standard = MXL_HYDRA_DVBS2;
@@ -416,45 +423,25 @@ static int set_parameters(struct dvb_frontend *fe)
 	default:
 		return -EINVAL;
 	}
-
-	
-#if 0
-	update_by_mnemonic(state,
-			   xpt_enable_dvb_input[demodId].regAddr,
-			   xpt_enable_dvb_input[demodId].lsbPos,
-			   xpt_enable_dvb_input[demodId].numOfBits,
-			   MXL_TRUE);
-#endif
 	demodChanCfg.tunerIndex = state->tuner;
 	demodChanCfg.demodIndex = state->demod;
 	demodChanCfg.frequencyInHz = p->frequency * 1000;
 	demodChanCfg.symbolRateInHz = p->symbol_rate;
-	demodChanCfg.maxCarrierOffsetInMHz = 10;
+	demodChanCfg.maxCarrierOffsetInMHz = srange;
 	demodChanCfg.spectrumInversion = MXL_HYDRA_SPECTRUM_AUTO;
 	demodChanCfg.fecCodeRate = MXL_HYDRA_FEC_AUTO;
 
-	printk("std %u freq %u\n", demodChanCfg.standard, demodChanCfg.symbolRateInHz);
-
-#if 0
-	if (p->delivery_system == SYS_DSS)
-		update_by_mnemonic(state,
-				   xpt_enable_dss_input[demodId].regAddr,
-				   xpt_enable_dss_input[demodId].lsbPos,
-				   xpt_enable_dss_input[demodId].numOfBits,
-				   MXL_TRUE);
-	else
-		update_by_mnemonic(state,
-				   xpt_enable_dss_input[demodId].regAddr,
-				   xpt_enable_dss_input[demodId].lsbPos,
-				   xpt_enable_dss_input[demodId].numOfBits,
-				   MXL_FALSE);
-#endif
-	
+	mutex_lock(&state->base->tune_lock);
+	if (time_after(jiffies + msecs_to_jiffies(200), state->base->next_tune))
+		while (time_before(jiffies, state->base->next_tune))
+			msleep(10);
+	state->base->next_tune = jiffies + msecs_to_jiffies(100);
+	pr_info("mxl5xx tune\n");
 	BUILD_HYDRA_CMD(MXL_HYDRA_DEMOD_SET_PARAM_CMD, MXL_CMD_WRITE,
 			cmdSize, &demodChanCfg, cmdBuff);
-	status = send_command(state, cmdSize + MXL_HYDRA_CMD_HEADER_SIZE, &cmdBuff[0]);
-
-	return status;
+	stat = send_command(state, cmdSize + MXL_HYDRA_CMD_HEADER_SIZE, &cmdBuff[0]);
+	mutex_unlock(&state->base->tune_lock);
+	return stat;
 }
 
 static int read_status(struct dvb_frontend *fe, fe_status_t *status)
@@ -474,7 +461,7 @@ static int read_status(struct dvb_frontend *fe, fe_status_t *status)
 
 	*status = (regData == 1) ? 0x1f : 0;
 
-	return 0;
+	return stat;
 }
 
 static int tune(struct dvb_frontend *fe, bool re_tune,
@@ -491,6 +478,7 @@ static int tune(struct dvb_frontend *fe, bool re_tune,
 		if (r)
 			return r;
 		state->tune_time = jiffies;
+		return 0;
 	}
 	if (*status & FE_HAS_LOCK)
 		return 0;
@@ -499,7 +487,6 @@ static int tune(struct dvb_frontend *fe, bool re_tune,
 	if (r)
 		return r;
 
-#if 0
 	if (*status & FE_HAS_LOCK)
 		return 0;
 
@@ -508,8 +495,6 @@ static int tune(struct dvb_frontend *fe, bool re_tune,
 	else
 		p->delivery_system = SYS_DVBS;
 	set_parameters(fe);
-#endif
-
 	return 0;
 }
 
@@ -585,16 +570,15 @@ static int get_frontend(struct dvb_frontend *fe)
 static int set_input(struct dvb_frontend *fe, int input)
 {
 	struct mxl *state = fe->demodulator_priv;
-	//struct dtv_frontend_properties *p = &fe->dtv_property_cache;
+	struct dtv_frontend_properties *p = &fe->dtv_property_cache;
 
-	//state->tuner = p->input;
-	state->tuner = input;
+	state->tuner = p->input = input;
 	return 0;
 }
 
 static struct dvb_frontend_ops mxl_ops = {
 	.delsys = { SYS_DVBS, SYS_DVBS2, SYS_DSS },
-	.xbar   = { 4, 0, 8 },
+	.xbar   = { 4, 0, 8 }, /* tuner_max, demod id, demod_max */
 	.info = {
 		.name			= "MXL5XX",
 		.frequency_min		= 950000,
@@ -602,7 +586,7 @@ static struct dvb_frontend_ops mxl_ops = {
 		.frequency_stepsize	= 0,
 		.frequency_tolerance	= 0,
 		.symbol_rate_min	= 1000000,
-		.symbol_rate_max	= 70000000,
+		.symbol_rate_max	= 45000000,
 		.caps			= FE_CAN_INVERSION_AUTO |
 					  FE_CAN_FEC_AUTO       |
 					  FE_CAN_QPSK           |
@@ -635,7 +619,9 @@ static struct mxl_base *match_base(struct i2c_adapter  *i2c, u8 adr)
 
 static void cfg_dev_xtal(struct mxl *state, u32 freq, u32 cap, u32 enable)
 {
-	SET_REG_FIELD_DATA(AFE_REG_D2A_XTAL_EN_CLKOUT_1P8, enable);
+	if (state->base->can_clkout || !enable)  
+		SET_REG_FIELD_DATA(AFE_REG_D2A_XTAL_EN_CLKOUT_1P8, enable);
+	
 	if (freq == 24000000)
 		write_register(state, HYDRA_CRYSTAL_SETTING, 0);
 	else
@@ -684,21 +670,20 @@ static int write_fw_segment(struct mxl *state,
 	u32 size = 0;
 	u32 origSize = 0;
 	u8 *wBufPtr = NULL;
-	u32 blockSize = MXL_HYDRA_OEM_MAX_BLOCK_WRITE_LENGTH;
-	u8 wMsgBuffer[MXL_HYDRA_OEM_MAX_BLOCK_WRITE_LENGTH];
+	u32 blockSize = ((MXL_HYDRA_OEM_MAX_BLOCK_WRITE_LENGTH -
+			  (MXL_HYDRA_I2C_HDR_SIZE + MXL_HYDRA_REG_SIZE_IN_BYTES)) / 4) * 4;
+	u8 wMsgBuffer[MXL_HYDRA_OEM_MAX_BLOCK_WRITE_LENGTH -
+		      (MXL_HYDRA_I2C_HDR_SIZE + MXL_HYDRA_REG_SIZE_IN_BYTES)];
 
 	do {
 		size = origSize = (((u32)(dataCount + blockSize)) > totalSize) ?
 			(totalSize - dataCount) : blockSize;
-		wBufPtr = dataPtr;
-
-		if (origSize & 3) {
+		
+		if (origSize & 3) 
 			size = (origSize + 4) & ~3;
-			wBufPtr = &wMsgBuffer[0];
-			memset((void *)wBufPtr + origSize,
-			       0x00, size - origSize);
-			memcpy((void *)wBufPtr, (void *)dataPtr, origSize);
-		}
+		wBufPtr = &wMsgBuffer[0];
+		memset((void *) wBufPtr, 0, size);
+		memcpy((void *) wBufPtr, (void *) dataPtr, origSize);
 		flip_data_in_dword(size, wBufPtr);
 		status  = write_firmware_block(state, MemAddr, size, wBufPtr);
 		if (status)
@@ -711,9 +696,8 @@ static int write_fw_segment(struct mxl *state,
 	return status;
 }
 
-static int do_firmware_download(struct mxl *state,
-				u32 mbinBufferSize,
-				u8 *mbinBufferPtr)
+static int do_firmware_download(struct mxl *state, u8 *mbinBufferPtr, u32 mbinBufferSize)
+				
 {
 	int status;
 	u32 index = 0;
@@ -721,7 +705,8 @@ static int do_firmware_download(struct mxl *state,
 	u32 segAddress = 0;
 	MBIN_FILE_T *mbinPtr  = (MBIN_FILE_T *)mbinBufferPtr;
 	MBIN_SEGMENT_T *segmentPtr;
-
+	MXL_BOOL_E xcpuFwFlag = MXL_FALSE;
+  
 	if (mbinPtr->header.id != MBIN_FILE_HEADER_ID) {
 		pr_err("%s: Invalid file header ID (%c)\n",
 		       __func__, mbinPtr->header.id);
@@ -739,10 +724,25 @@ static int do_firmware_download(struct mxl *state,
 		}
 		segLength  = get_big_endian(24, &(segmentPtr->header.len24[0]));
 		segAddress = get_big_endian(32, &(segmentPtr->header.address[0]));
-		if (((segAddress & 0x90760000) != 0x90760000) &&
-		    ((segAddress & 0x90740000) != 0x90740000))
+		
+		if (state->base->type == MXL_HYDRA_DEVICE_568) {
+			if ((((segAddress & 0x90760000) == 0x90760000) ||
+			     ((segAddress & 0x90740000) == 0x90740000)) &&
+			    (xcpuFwFlag == MXL_FALSE)) {
+				SET_REG_FIELD_DATA(PRCM_PRCM_CPU_SOFT_RST_N, 1);
+				msleep(200);
+				write_register(state, 0x90720000, 0);
+				msleep(10);
+				xcpuFwFlag = MXL_TRUE;
+			}
 			status = write_fw_segment(state, segAddress,
 						  segLength, (u8 *) segmentPtr->data);
+		} else {
+			if (((segAddress & 0x90760000) != 0x90760000) &&
+			    ((segAddress & 0x90740000) != 0x90740000))
+				status = write_fw_segment(state, segAddress,
+							  segLength, (u8 *) segmentPtr->data);
+		}
 		if (status)
 			return status;
 		segmentPtr = (MBIN_SEGMENT_T *)
@@ -751,8 +751,29 @@ static int do_firmware_download(struct mxl *state,
 	return status;
 }
 
-static int firmware_download(struct mxl *state, u32 mbinBufferSize,
-			     u8 *mbinBufferPtr)
+static int check_fw(u8 *mbin, u32 mbin_len)
+{
+	MBIN_FILE_HEADER_T *fh = (MBIN_FILE_HEADER_T *) mbin;
+	u32 flen = (fh->imageSize24[0] << 16) |
+		(fh->imageSize24[1] <<  8) | fh->imageSize24[2];
+	u8 *fw, cs = 0;
+	u32 i;
+	
+	if (fh->id != 'M' || fh->fmtVersion != '1' || flen > 0x3FFF0) {
+		pr_info("mxl5xx: Invalid FW Header\n");
+		return -1;
+	}
+	fw = mbin + sizeof(MBIN_FILE_HEADER_T);
+	for (i = 0; i < flen; i += 1)
+		cs += fw[i];
+	if (cs != fh->imageChecksum) {
+		pr_info("mxl5xx: Invalid FW Checksum\n");
+		return -1;
+	}
+	return 0;
+}
+
+static int firmware_download(struct mxl *state, u8 *mbin, u32 mbin_len)
 {
 	int status;
 	u32 regData = 0;
@@ -760,6 +781,9 @@ static int firmware_download(struct mxl *state, u32 mbinBufferSize,
 	u8 cmdSize = sizeof(MXL_HYDRA_SKU_COMMAND_T);
 	u8 cmdBuff[sizeof(MXL_HYDRA_SKU_COMMAND_T) + 6];
 
+	if (check_fw(mbin, mbin_len))
+		return -1;
+	
 	/* put CPU into reset */
 	status = SET_REG_FIELD_DATA(PRCM_PRCM_CPU_SOFT_RST_N, 0);
 	if (status)
@@ -788,7 +812,7 @@ static int firmware_download(struct mxl *state, u32 mbinBufferSize,
 	status = read_register(state, HYDRA_PRCM_ROOT_CLK_REG, &regData);
 	if (status)
 		return status;
-	status = do_firmware_download(state, mbinBufferSize, mbinBufferPtr);
+	status = do_firmware_download(state, mbin, mbin_len);
 	if (status)
 		return status;
 	
@@ -814,7 +838,7 @@ static int firmware_download(struct mxl *state, u32 mbinBufferSize,
 		msleep(150);
 	}
 
-	// Initilize XPT XBAR
+	/* Initilize XPT XBAR */
 	status = write_register(state, XPT_DMD0_BASEADDR, 0x76543210);
 	if (status)
 		return status;
@@ -827,27 +851,10 @@ static int firmware_download(struct mxl *state, u32 mbinBufferSize,
 	/* sometimes register values are wrong shortly after first heart beats */
 	msleep(50);
 
-	devSkuCfg.skuType = state->base->type;
+	devSkuCfg.skuType = state->base->sku_type;
 	BUILD_HYDRA_CMD(MXL_HYDRA_DEV_CFG_SKU_CMD, MXL_CMD_WRITE,
 			cmdSize, &devSkuCfg, cmdBuff);
 	status = send_command(state, cmdSize + MXL_HYDRA_CMD_HEADER_SIZE, &cmdBuff[0]);
-	if (status)
-		return status;
-
-	status = GET_REG_FIELD_DATA(PAD_MUX_BOND_OPTION, &regData);
-	if (status)
-		return status;
-	pr_info("chipID=%08x\n", regData);
-
-	status = GET_REG_FIELD_DATA(PRCM_AFE_CHIP_MMSK_VER, &regData);
-	if (status)
-		return status;
-	pr_info("chipVer=%08x\n", regData);
-
-	status = read_register(state, HYDRA_FIRMWARE_VERSION, &regData);
-	if (status)
-		return status;
-	pr_info("FWVer=%08x\n", regData);
 
 	return status;
 }
@@ -857,14 +864,26 @@ static int cfg_ts_pad_mux(struct mxl *state, MXL_BOOL_E enableSerialTS)
 	int status = 0;
 	u32 padMuxValue = 0;
 
-	if (enableSerialTS == MXL_TRUE)
+	if (enableSerialTS == MXL_TRUE) {
 		padMuxValue = 0;
-	else
-		padMuxValue = 3;
+		if ((state->base->type == MXL_HYDRA_DEVICE_541) ||
+		    (state->base->type == MXL_HYDRA_DEVICE_541S))
+			padMuxValue = 2;
+	} else {
+		if ((state->base->type == MXL_HYDRA_DEVICE_581) ||
+		    (state->base->type == MXL_HYDRA_DEVICE_581S))
+			padMuxValue = 2;
+		else
+			padMuxValue = 3;
+	}
 
 	switch (state->base->type) {
 	case MXL_HYDRA_DEVICE_561:
 	case MXL_HYDRA_DEVICE_581:
+	case MXL_HYDRA_DEVICE_541:
+	case MXL_HYDRA_DEVICE_541S:
+	case MXL_HYDRA_DEVICE_561S:
+	case MXL_HYDRA_DEVICE_581S:
 		status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_14_PINMUX_SEL, padMuxValue);
 		status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_15_PINMUX_SEL, padMuxValue);
 		status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_16_PINMUX_SEL, padMuxValue);
@@ -880,6 +899,111 @@ static int cfg_ts_pad_mux(struct mxl *state, MXL_BOOL_E enableSerialTS)
 		status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_26_PINMUX_SEL, padMuxValue);
 		break;
 
+	case MXL_HYDRA_DEVICE_544:
+	case MXL_HYDRA_DEVICE_542:
+		status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_01_PINMUX_SEL, 1);
+		status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_02_PINMUX_SEL, 0);
+		status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_03_PINMUX_SEL, 0);
+		status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_04_PINMUX_SEL, 0);
+		status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_08_PINMUX_SEL, 0);
+		status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_27_PINMUX_SEL, 1);
+		status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_28_PINMUX_SEL, 1);
+		status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_29_PINMUX_SEL, 1);
+		status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_30_PINMUX_SEL, 1);
+		status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_32_PINMUX_SEL, 1);
+		status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_33_PINMUX_SEL, 1);
+		if (enableSerialTS == MXL_ENABLE) {
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_09_PINMUX_SEL, 0);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_10_PINMUX_SEL, 0);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_11_PINMUX_SEL, 0);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_12_PINMUX_SEL, 0);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_13_PINMUX_SEL, 1);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_14_PINMUX_SEL, 1);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_15_PINMUX_SEL, 2);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_16_PINMUX_SEL, 2);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_17_PINMUX_SEL, 2);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_18_PINMUX_SEL, 2);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_19_PINMUX_SEL, 2);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_20_PINMUX_SEL, 2);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_21_PINMUX_SEL, 2);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_22_PINMUX_SEL, 2);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_23_PINMUX_SEL, 2);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_24_PINMUX_SEL, 2);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_25_PINMUX_SEL, 2);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_26_PINMUX_SEL, 2);
+		} else {
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_09_PINMUX_SEL, 3);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_10_PINMUX_SEL, 3);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_11_PINMUX_SEL, 3);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_12_PINMUX_SEL, 3);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_13_PINMUX_SEL, 3);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_14_PINMUX_SEL, 3);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_15_PINMUX_SEL, 3);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_16_PINMUX_SEL, 3);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_17_PINMUX_SEL, 3);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_18_PINMUX_SEL, 3);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_19_PINMUX_SEL, 3);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_20_PINMUX_SEL, 3);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_21_PINMUX_SEL, 1);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_22_PINMUX_SEL, 1);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_23_PINMUX_SEL, 1);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_24_PINMUX_SEL, 1);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_25_PINMUX_SEL, 1);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_26_PINMUX_SEL, 1);
+		}
+		break;
+		
+	case MXL_HYDRA_DEVICE_568:
+		if (enableSerialTS == MXL_FALSE) {
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_02_PINMUX_SEL, 5);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_03_PINMUX_SEL, 5);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_04_PINMUX_SEL, 5);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_05_PINMUX_SEL, 5);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_06_PINMUX_SEL, 5);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_07_PINMUX_SEL, 5);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_08_PINMUX_SEL, 5);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_09_PINMUX_SEL, 5);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_10_PINMUX_SEL, 5);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_11_PINMUX_SEL, 5);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_12_PINMUX_SEL, 5);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_13_PINMUX_SEL, 5);
+			
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_14_PINMUX_SEL, padMuxValue);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_16_PINMUX_SEL, padMuxValue);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_17_PINMUX_SEL, padMuxValue);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_18_PINMUX_SEL, padMuxValue);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_19_PINMUX_SEL, padMuxValue);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_20_PINMUX_SEL, padMuxValue);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_21_PINMUX_SEL, padMuxValue);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_22_PINMUX_SEL, padMuxValue);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_23_PINMUX_SEL, padMuxValue);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_24_PINMUX_SEL, padMuxValue);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_25_PINMUX_SEL, padMuxValue);
+			
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_26_PINMUX_SEL, 5);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_27_PINMUX_SEL, 5);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_28_PINMUX_SEL, 5);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_29_PINMUX_SEL, 5);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_30_PINMUX_SEL, 5);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_31_PINMUX_SEL, 5);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_32_PINMUX_SEL, 5);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_33_PINMUX_SEL, 5);
+		} else {
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_09_PINMUX_SEL, padMuxValue);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_10_PINMUX_SEL, padMuxValue);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_11_PINMUX_SEL, padMuxValue);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_12_PINMUX_SEL, padMuxValue);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_13_PINMUX_SEL, padMuxValue);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_14_PINMUX_SEL, padMuxValue);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_15_PINMUX_SEL, padMuxValue);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_16_PINMUX_SEL, padMuxValue);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_17_PINMUX_SEL, padMuxValue);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_18_PINMUX_SEL, padMuxValue);
+			status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_19_PINMUX_SEL, padMuxValue);
+		}
+		break;
+		
+		
 	case MXL_HYDRA_DEVICE_584:
 	default:
 		status |= SET_REG_FIELD_DATA(PAD_MUX_DIGIO_09_PINMUX_SEL, padMuxValue);
@@ -898,12 +1022,14 @@ static int cfg_ts_pad_mux(struct mxl *state, MXL_BOOL_E enableSerialTS)
 	return status;
 }
 
-static int config_ts(struct mxl *state, MXL_HYDRA_DEMOD_ID_E demodId, MXL_HYDRA_MPEGOUT_PARAM_T *mpegOutParamPtr)
+static int config_ts(struct mxl *state, MXL_HYDRA_DEMOD_ID_E demodId,
+		     MXL_HYDRA_MPEGOUT_PARAM_T *mpegOutParamPtr)
 {
 	int status = 0;
 	u32 ncoCountMin = 0;
 	u32 clkType = 0;
-
+	u8 i;
+	
 	MXL_REG_FIELD_T xpt_sync_polarity[MXL_HYDRA_DEMOD_MAX] = {
 		{XPT_SYNC_POLARITY0}, {XPT_SYNC_POLARITY1},
 		{XPT_SYNC_POLARITY2}, {XPT_SYNC_POLARITY3},
@@ -937,11 +1063,6 @@ static int config_ts(struct mxl *state, MXL_HYDRA_DEMOD_ID_E demodId, MXL_HYDRA_
 		{XPT_ENABLE_OUTPUT2}, {XPT_ENABLE_OUTPUT3},
 		{XPT_ENABLE_OUTPUT4}, {XPT_ENABLE_OUTPUT5},
 		{XPT_ENABLE_OUTPUT6}, {XPT_ENABLE_OUTPUT7} };
-	MXL_REG_FIELD_T xpt_enable_dvb_input[MXL_HYDRA_DEMOD_MAX] = {
-		{XPT_ENABLE_INPUT0}, {XPT_ENABLE_INPUT1},
-		{XPT_ENABLE_INPUT2}, {XPT_ENABLE_INPUT3},
-		{XPT_ENABLE_INPUT4}, {XPT_ENABLE_INPUT5},
-		{XPT_ENABLE_INPUT6}, {XPT_ENABLE_INPUT7} };
 	MXL_REG_FIELD_T xpt_err_replace_sync[MXL_HYDRA_DEMOD_MAX] = {
 		{XPT_ERROR_REPLACE_SYNC0}, {XPT_ERROR_REPLACE_SYNC1},
 		{XPT_ERROR_REPLACE_SYNC2}, {XPT_ERROR_REPLACE_SYNC3},
@@ -957,6 +1078,12 @@ static int config_ts(struct mxl *state, MXL_HYDRA_DEMOD_ID_E demodId, MXL_HYDRA_
 		{XPT_TS_CLK_OUT_EN2}, {XPT_TS_CLK_OUT_EN3},
 		{XPT_TS_CLK_OUT_EN4}, {XPT_TS_CLK_OUT_EN5},
 		{XPT_TS_CLK_OUT_EN6}, {XPT_TS_CLK_OUT_EN7} };
+	MXL_REG_FIELD_T xpt_nco_clock_rate[MXL_HYDRA_DEMOD_MAX] = {
+		{XPT_NCO_COUNT_MIN0}, {XPT_NCO_COUNT_MIN1},
+		{XPT_NCO_COUNT_MIN2}, {XPT_NCO_COUNT_MIN3},
+		{XPT_NCO_COUNT_MIN4}, {XPT_NCO_COUNT_MIN5},
+		{XPT_NCO_COUNT_MIN6}, {XPT_NCO_COUNT_MIN7} };
+	
 	MXL_REG_FIELD_T mxl561_xpt_ts_sync[MXL_HYDRA_DEMOD_ID_6] = {
 		{PAD_MUX_DIGIO_25_PINMUX_SEL}, {PAD_MUX_DIGIO_20_PINMUX_SEL},
 		{PAD_MUX_DIGIO_17_PINMUX_SEL}, {PAD_MUX_DIGIO_11_PINMUX_SEL},
@@ -967,12 +1094,45 @@ static int config_ts(struct mxl *state, MXL_HYDRA_DEMOD_ID_E demodId, MXL_HYDRA_
 		{PAD_MUX_DIGIO_09_PINMUX_SEL}, {PAD_MUX_DIGIO_02_PINMUX_SEL} };
 
 	if (MXL_ENABLE == mpegOutParamPtr->enable) {
-		cfg_ts_pad_mux(state, MXL_TRUE);
-		SET_REG_FIELD_DATA(XPT_ENABLE_PARALLEL_OUTPUT, MXL_FALSE);
-	}
-	ncoCountMin = (u32)(MXL_HYDRA_NCO_CLK/mpegOutParamPtr->maxMpegClkRate);
-	SET_REG_FIELD_DATA(XPT_NCO_COUNT_MIN, ncoCountMin);
+		if (mpegOutParamPtr->mpegMode == MXL_HYDRA_MPEG_MODE_PARALLEL)	{
+#if 0
+			for (i = MXL_HYDRA_DEMOD_ID_0; i < MXL_HYDRA_DEMOD_MAX; i++) {
+				mxlStatus |= MxLWare_Hydra_UpdateByMnemonic(devId,
+									    xpt_enable_output[i].regAddr,
+									    xpt_enable_output[i].lsbPos,
+									    xpt_enable_output[i].numOfBits,
+									    0);
+				
+			}
+			cfg_ts_pad_mux(state, MXL_FALSE);
 
+			mpegOutParamPtr->lsbOrMsbFirst = MXL_HYDRA_MPEG_SERIAL_MSB_1ST;
+			mpegOutParamPtr->mpegSyncPulseWidth = MXL_HYDRA_MPEG_SYNC_WIDTH_BYTE;
+			
+			// remove output FIFO
+			mxlStatus |= SET_REG_FIELD_DATA(devId, PRCM_PRCM_XPT_PARALLEL_FIFO_RST_N, 0);
+			mxlStatus |= SET_REG_FIELD_DATA(devId, PRCM_PRCM_XPT_PARALLEL_FIFO_RST_N, 1);
+			
+			// Enable parallel mode
+			mxlStatus |= SET_REG_FIELD_DATA(devId, XPT_ENABLE_PARALLEL_OUTPUT, MXL_TRUE);
+#endif
+		} else {
+			cfg_ts_pad_mux(state, MXL_TRUE);
+			SET_REG_FIELD_DATA(XPT_ENABLE_PARALLEL_OUTPUT, MXL_FALSE);
+		}
+	}
+	
+	ncoCountMin = (u32)(MXL_HYDRA_NCO_CLK/mpegOutParamPtr->maxMpegClkRate);
+
+	if (state->base->chipversion >= 2) {
+		status |= update_by_mnemonic(state,
+					     xpt_nco_clock_rate[demodId].regAddr,         // Reg Addr
+					     xpt_nco_clock_rate[demodId].lsbPos,          // LSB pos
+					     xpt_nco_clock_rate[demodId].numOfBits,       // Num of bits
+					     ncoCountMin);              // Data
+	} else
+		SET_REG_FIELD_DATA(XPT_NCO_COUNT_MIN, ncoCountMin);
+	
 	if (mpegOutParamPtr->mpegClkType == MXL_HYDRA_MPEG_CLK_CONTINUOUS)
 		clkType = 1;
 
@@ -1028,7 +1188,6 @@ static int config_ts(struct mxl *state, MXL_HYDRA_DEMOD_ID_E demodId, MXL_HYDRA_
 					     xpt_err_replace_sync[demodId].lsbPos,
 					     xpt_err_replace_sync[demodId].numOfBits,
 					     MXL_TRUE);
-
 		status |= update_by_mnemonic(state,
 					     xpt_err_replace_valid[demodId].regAddr,
 					     xpt_err_replace_valid[demodId].lsbPos,
@@ -1074,14 +1233,6 @@ static int config_ts(struct mxl *state, MXL_HYDRA_DEMOD_ID_E demodId, MXL_HYDRA_
 					     xpt_enable_output[demodId].lsbPos,
 					     xpt_enable_output[demodId].numOfBits,
 					     mpegOutParamPtr->enable);
-
-		status |=
-			update_by_mnemonic(state,
-					   xpt_enable_dvb_input[demodId].regAddr,
-					   xpt_enable_dvb_input[demodId].lsbPos,
-					   xpt_enable_dvb_input[demodId].numOfBits,
-					   mpegOutParamPtr->enable);
-
 	}
 	return status;
 }
@@ -1128,10 +1279,10 @@ static int load_fw(struct mxl *state, struct mxl5xx_cfg *cfg)
 	u8 *buf;
 	
 	if (cfg->fw)
-		return firmware_download(state, cfg->fw_len, cfg->fw);
+		return firmware_download(state, cfg->fw, cfg->fw_len);
 	
 #ifdef FW_INCLUDED
-	return firmware_download(state, sizeof(hydra_fw), hydra_fw);
+	return firmware_download(state, hydra_fw, sizeof(hydra_fw));
 #endif
 	
 	if (!cfg->fw_read)
@@ -1142,12 +1293,107 @@ static int load_fw(struct mxl *state, struct mxl5xx_cfg *cfg)
 		return -ENOMEM;
 	
 	cfg->fw_read(cfg->fw_priv, buf, 0x40000);
-	stat = firmware_download(state, 0x40000, buf);
+	stat = firmware_download(state, buf, 0x40000);
 	vfree(buf);
-	
+
 	return stat;
 }
 
+static int validate_sku(struct mxl *state)
+{
+	u32 padMuxBond, prcmChipId, prcmSoCId;
+	int status;
+	u32 type = state->base->type;
+	
+	status = GET_REG_FIELD_DATA(PAD_MUX_BOND_OPTION, &padMuxBond);
+	status |= GET_REG_FIELD_DATA(PRCM_PRCM_CHIP_ID, &prcmChipId);
+	status |= GET_REG_FIELD_DATA(PRCM_AFE_SOC_ID, &prcmSoCId);
+	if (status)
+		return -1;
+
+	pr_info("mx5xx: padMuxBond=%08x, prcmChipId=%08x, prcmSoCId=%08x\n",
+		padMuxBond, prcmChipId, prcmSoCId);
+	
+	if (prcmChipId != 0x560) {
+		switch (padMuxBond) {
+		case MXL_HYDRA_SKU_ID_581:
+			if (type == MXL_HYDRA_DEVICE_581)
+				return 0;
+			if (type == MXL_HYDRA_DEVICE_581S) {
+				state->base->type = MXL_HYDRA_DEVICE_581;
+				return 0;
+			}
+			break;
+		case MXL_HYDRA_SKU_ID_584:
+			if (type == MXL_HYDRA_DEVICE_584)
+				return 0;
+			break;
+		case MXL_HYDRA_SKU_ID_544:
+			if (type == MXL_HYDRA_DEVICE_544)
+				return 0;
+			if (type == MXL_HYDRA_DEVICE_542)
+				return 0;
+			break;
+		case MXL_HYDRA_SKU_ID_582:
+			if (type == MXL_HYDRA_DEVICE_582)
+				return 0;
+			break;
+		default:
+			return -1;
+		}
+	} else {
+		
+	}
+	return -1;
+}
+
+static int get_fwinfo(struct mxl *state)
+{
+	int status;
+	u32 regData = 0;
+
+	status = GET_REG_FIELD_DATA(PAD_MUX_BOND_OPTION, &regData);
+	if (status)
+		return status;
+	pr_info("chipID=%08x\n", regData);
+
+	status = GET_REG_FIELD_DATA(PRCM_AFE_CHIP_MMSK_VER, &regData);
+	if (status)
+		return status;
+	pr_info("chipVer=%08x\n", regData);
+
+	status = read_register(state, HYDRA_FIRMWARE_VERSION, &regData);
+	if (status)
+		return status;
+	pr_info("FWVer=%08x\n", regData);
+	
+	return status;
+}
+
+
+static u8 tsMap1_to_1[MXL_HYDRA_DEMOD_MAX] =
+{
+	MXL_HYDRA_DEMOD_ID_0,
+	MXL_HYDRA_DEMOD_ID_1,
+	MXL_HYDRA_DEMOD_ID_2,
+	MXL_HYDRA_DEMOD_ID_3,
+	MXL_HYDRA_DEMOD_ID_4,
+	MXL_HYDRA_DEMOD_ID_5,
+	MXL_HYDRA_DEMOD_ID_6,
+	MXL_HYDRA_DEMOD_ID_7
+};
+
+static u8 tsMap54x[MXL_HYDRA_DEMOD_MAX] =
+{
+	MXL_HYDRA_DEMOD_ID_2,
+	MXL_HYDRA_DEMOD_ID_3,
+	MXL_HYDRA_DEMOD_ID_4,
+	MXL_HYDRA_DEMOD_ID_5,
+	MXL_HYDRA_DEMOD_MAX,
+	MXL_HYDRA_DEMOD_MAX,
+	MXL_HYDRA_DEMOD_MAX,
+	MXL_HYDRA_DEMOD_MAX
+};
 
 static int probe(struct mxl *state, struct mxl5xx_cfg *cfg)
 {
@@ -1155,45 +1401,97 @@ static int probe(struct mxl *state, struct mxl5xx_cfg *cfg)
 	int fw, status, j;
 	MXL_HYDRA_MPEGOUT_PARAM_T mpegInterfaceCfg;
 
-	fw = firmware_is_alive(state);
-
-	if (!fw)  {
-		SET_REG_FIELD_DATA(PRCM_AFE_REG_CLOCK_ENABLE, 1);
-		SET_REG_FIELD_DATA(PRCM_PRCM_AFE_REG_SOFT_RST_N, 1);
-		status = GET_REG_FIELD_DATA(PRCM_CHIP_VERSION, &chipver);
-		if (status)
-			state->base->chipversion = 0;
-		else
-			state->base->chipversion = (chipver == 2) ? 2 : 1;
-		pr_info("Hydra chip version %u\n", state->base->chipversion);
-		
-#if 0
-		/* only for engineering samples */
-		write_register(state, 0x90200070, 0xF400);
-		SET_REG_FIELD_DATA(AFE_REG_D2A_TA_RFFE_RF1_EN_1P8, 1);
-		SET_REG_FIELD_DATA(AFE_REG_D2A_TB_RFFE_RF1_EN_1P8, 1);
-		SET_REG_FIELD_DATA(AFE_REG_D2A_TC_RFFE_RF1_EN_1P8, 1);
-		SET_REG_FIELD_DATA(AFE_REG_D2A_TD_RFFE_RF1_EN_1P8, 1);
-		SET_REG_FIELD_DATA(AFE_REG_D2A_TA_ADC_CLK_OUT_FLIP, 1);
-		SET_REG_FIELD_DATA(AFE_REG_D2A_TB_ADC_CLK_OUT_FLIP, 1);
-		SET_REG_FIELD_DATA(AFE_REG_D2A_TC_ADC_CLK_OUT_FLIP, 1);
-		SET_REG_FIELD_DATA(AFE_REG_D2A_TD_ADC_CLK_OUT_FLIP, 1);
-		SET_REG_FIELD_DATA(AFE_REG_D2A_TA_RFFE_SPARE_1P8, 1);
-		SET_REG_FIELD_DATA(AFE_REG_D2A_TB_RFFE_SPARE_1P8, 1);
-		SET_REG_FIELD_DATA(AFE_REG_D2A_TC_RFFE_SPARE_1P8, 1);
-		SET_REG_FIELD_DATA(AFE_REG_D2A_TD_RFFE_SPARE_1P8, 1);
-		SET_REG_FIELD_DATA(AFE_REG_D2A_TA_RFFE_LNACAPLOAD_1P8, 0);
-		SET_REG_FIELD_DATA(AFE_REG_D2A_TB_RFFE_LNACAPLOAD_1P8, 0);
-		SET_REG_FIELD_DATA(AFE_REG_D2A_TC_RFFE_LNACAPLOAD_1P8, 0);
-		SET_REG_FIELD_DATA(AFE_REG_D2A_TD_RFFE_LNACAPLOAD_1P8, 0);
-#endif
+	state->base->ts_map = tsMap1_to_1;
+	
+	switch (state->base->type) {
+	case MXL_HYDRA_DEVICE_581:
+	case MXL_HYDRA_DEVICE_581S:
+		state->base->can_clkout = 1;
+		state->base->demod_num = 8;
+		state->base->tuner_num = 1;
+		state->base->sku_type = MXL_HYDRA_SKU_TYPE_581;
+		break;
+	case MXL_HYDRA_DEVICE_582:
+		state->base->can_clkout = 1;
+		state->base->demod_num = 8;
+		state->base->tuner_num = 3;
+		state->base->sku_type = MXL_HYDRA_SKU_TYPE_582;
+		break;
+	case MXL_HYDRA_DEVICE_585:
+		state->base->can_clkout = 0;
+		state->base->demod_num = 8;
+		state->base->tuner_num = 4;
+		state->base->sku_type = MXL_HYDRA_SKU_TYPE_585;
+		break;
+	case MXL_HYDRA_DEVICE_544:
+		state->base->can_clkout = 0;
+		state->base->demod_num = 4;
+		state->base->tuner_num = 4;
+		state->base->sku_type = MXL_HYDRA_SKU_TYPE_544;
+		state->base->ts_map = tsMap54x;
+		break;
+	case MXL_HYDRA_DEVICE_541:
+	case MXL_HYDRA_DEVICE_541S:
+		state->base->can_clkout = 0;
+		state->base->demod_num = 4;
+		state->base->tuner_num = 1;
+		state->base->sku_type = MXL_HYDRA_SKU_TYPE_541;
+		state->base->ts_map = tsMap54x;
+		break;
+	case MXL_HYDRA_DEVICE_561:
+	case MXL_HYDRA_DEVICE_561S:
+		state->base->can_clkout = 0;
+		state->base->demod_num = 6;
+		state->base->tuner_num = 1;
+		state->base->sku_type = MXL_HYDRA_SKU_TYPE_561;
+		break;
+	case MXL_HYDRA_DEVICE_568:
+		state->base->can_clkout = 0;
+		state->base->demod_num = 8;
+		state->base->tuner_num = 1;
+		state->base->chan_bond = 1;
+		state->base->sku_type = MXL_HYDRA_SKU_TYPE_568;
+		break;
+	case MXL_HYDRA_DEVICE_542:
+		state->base->can_clkout = 1;
+		state->base->demod_num = 4;
+		state->base->tuner_num = 3;
+		state->base->sku_type = MXL_HYDRA_SKU_TYPE_542;
+		state->base->ts_map = tsMap54x;
+		break;
+	case MXL_HYDRA_DEVICE_TEST:
+	case MXL_HYDRA_DEVICE_584:
+	default:
+		state->base->can_clkout = 0;
+		state->base->demod_num = 8;
+		state->base->tuner_num = 4;
+		state->base->sku_type = MXL_HYDRA_SKU_TYPE_584;
+		break;
 	}
-	cfg_dev_xtal(state, cfg->clk, cfg->cap, 0);
 
-	status = load_fw(state, cfg);
+	status = validate_sku(state);
 	if (status)
 		return status;
 
+	SET_REG_FIELD_DATA(PRCM_AFE_REG_CLOCK_ENABLE, 1);
+	SET_REG_FIELD_DATA(PRCM_PRCM_AFE_REG_SOFT_RST_N, 1);
+	status = GET_REG_FIELD_DATA(PRCM_CHIP_VERSION, &chipver);
+	if (status)
+		state->base->chipversion = 0;
+	else
+		state->base->chipversion = (chipver == 2) ? 2 : 1;
+	pr_info("Hydra chip version %u\n", state->base->chipversion);
+
+	cfg_dev_xtal(state, cfg->clk, cfg->cap, 0);
+		
+	fw = firmware_is_alive(state);
+	if (!fw) {
+		status = load_fw(state, cfg);
+		if (status)
+			return status;
+	}
+	get_fwinfo(state);
+	
 	config_dis(state, 0);
 	config_dis(state, 1);
 	config_dis(state, 2);
@@ -1203,7 +1501,10 @@ static int probe(struct mxl *state, struct mxl5xx_cfg *cfg)
 	mpegInterfaceCfg.enable = MXL_ENABLE;
 	mpegInterfaceCfg.lsbOrMsbFirst = MXL_HYDRA_MPEG_SERIAL_MSB_1ST;
 	/*  supports only (0-104&139)MHz */
-	mpegInterfaceCfg.maxMpegClkRate = 139;
+	if (cfg->ts_clk)
+		mpegInterfaceCfg.maxMpegClkRate = cfg->ts_clk;
+	else
+		mpegInterfaceCfg.maxMpegClkRate = 69;//139;
 	mpegInterfaceCfg.mpegClkPhase = MXL_HYDRA_MPEG_CLK_PHASE_SHIFT_0_DEG;
 	mpegInterfaceCfg.mpegClkPol = MXL_HYDRA_MPEG_CLK_IN_PHASE;
 	/* MXL_HYDRA_MPEG_CLK_GAPPED; */
@@ -1215,7 +1516,8 @@ static int probe(struct mxl *state, struct mxl5xx_cfg *cfg)
 	mpegInterfaceCfg.mpegSyncPulseWidth  = MXL_HYDRA_MPEG_SYNC_WIDTH_BIT;
 	mpegInterfaceCfg.mpegValidPol  = MXL_HYDRA_MPEG_ACTIVE_HIGH;
 
-	for (j = 0; j < 8; j++) {
+	
+	for (j = 0; j < state->base->demod_num; j++) {
 		status = config_ts(state, (MXL_HYDRA_DEMOD_ID_E) j,
 				   &mpegInterfaceCfg);
 		if (status)
@@ -1241,6 +1543,8 @@ struct dvb_frontend *mxl5xx_attach(struct i2c_adapter *i2c,
 	base = match_base(i2c, cfg->adr);
 	if (base) {
 		base->count++;
+		if (base->count > base->demod_num)
+			goto fail;
 		state->base = base;
 	} else {
 		base = kzalloc(sizeof(struct mxl_base), GFP_KERNEL);
@@ -1252,6 +1556,8 @@ struct dvb_frontend *mxl5xx_attach(struct i2c_adapter *i2c,
 		base->count = 1;
 		mutex_init(&base->i2c_lock);
 		mutex_init(&base->status_lock);
+		mutex_init(&base->tune_lock);
+
 		state->base = base;
 		if (probe(state, cfg) < 0) {
 			kfree(base);
@@ -1262,7 +1568,7 @@ struct dvb_frontend *mxl5xx_attach(struct i2c_adapter *i2c,
 	state->fe.ops               = mxl_ops;
 	state->fe.ops.xbar[1]       = demod;
 	state->fe.demodulator_priv  = state;
-
+	state->fe.dtv_property_cache.input = tuner;
 	return &state->fe;
 
 fail:
@@ -1273,5 +1579,5 @@ EXPORT_SYMBOL_GPL(mxl5xx_attach);
 
 
 MODULE_DESCRIPTION("MXL5XX driver");
-MODULE_AUTHOR("Ralph Metzler");
+MODULE_AUTHOR("Ralph and Marcus Metzler, Metzler Brothers Systementwicklung GbR");
 MODULE_LICENSE("GPL");

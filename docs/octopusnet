@@ -51,7 +51,6 @@ and the bootstrap code which loads u-boot also does not contain error correction
 
 
 
-
 - SPI dataflash
 
 0x000000 - 0x003fff FPGA config data
@@ -62,7 +61,7 @@ and the bootstrap code which loads u-boot also does not contain error correction
 0x1ff000 - 0x1fffff FPGA jump to golden image
 
 
-- NAND flash
+- NAND flash 256MB, block size 128K (0x20000)
 
 0x00000000 - 0x0001ffff G45 bootstrap (fallback bootstrap if SPI corrupted, pull jumper to use)
 0x00020000 - 0x0007ffff G45 u-boot (fallback u-boot if SPI corrupted)

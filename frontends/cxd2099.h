@@ -32,6 +32,8 @@ struct cxd2099_cfg {
 	u8  adr;
 	u8  polarity;
 	u8  clock_mode;
+
+	u32 max_i2c;
 };
 
 struct dvb_ca_en50221 *cxd2099_attach(struct cxd2099_cfg *cfg,

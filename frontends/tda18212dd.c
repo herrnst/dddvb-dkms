@@ -791,7 +791,6 @@ static int release(struct dvb_frontend *fe)
 	return 0;
 }
 
-#ifndef USE_API3
 static int set_params(struct dvb_frontend *fe)
 {
 	struct tda_state *state = fe->tuner_priv;
@@ -843,43 +842,6 @@ static int set_params(struct dvb_frontend *fe)
 
 	return status;
 }
-#else
-static int set_params(struct dvb_frontend *fe,
-		      struct dvb_frontend_parameters *params)
-{
-	struct tda_state *state = fe->tuner_priv;
-	int status = 0;
-	int Standard;
-
-	state->m_Frequency = params->frequency;
-
-	if (fe->ops.info.type == FE_OFDM)
-		switch (params->u.ofdm.bandwidth) {
-		case BANDWIDTH_6_MHZ:
-			Standard = HF_DVBT_6MHZ;
-			break;
-		case BANDWIDTH_7_MHZ:
-			Standard = HF_DVBT_7MHZ;
-			break;
-		default:
-		case BANDWIDTH_8_MHZ:
-			Standard = HF_DVBT_8MHZ;
-			break;
-		}
-	else if (fe->ops.info.type == FE_QAM) {
-		Standard = HF_DVBC_8MHZ;
-	} else
-		return -EINVAL;
-
-	if (fe->ops.i2c_gate_ctrl)
-		fe->ops.i2c_gate_ctrl(fe, 1);
-	SetFrequency(state, state->m_Frequency, Standard);
-	if (fe->ops.i2c_gate_ctrl)
-		fe->ops.i2c_gate_ctrl(fe, 0);
-
-	return status;
-}
-#endif
 
 static int get_frequency(struct dvb_frontend *fe, u32 *frequency)
 {

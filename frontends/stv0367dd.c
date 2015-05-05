@@ -57,12 +57,7 @@ enum {
 enum EDemodState { Off, QAMSet, OFDMSet, QAMStarted, OFDMStarted };
 
 struct stv_state {
-#ifdef USE_API3
-	struct dvb_frontend c_frontend;
-	struct dvb_frontend t_frontend;
-#else
 	struct dvb_frontend frontend;
-#endif
 	fe_modulation_t modulation;
 	u32 symbol_rate;
 	u32 bandwidth;
@@ -70,6 +65,7 @@ struct stv_state {
 
 	struct i2c_adapter *i2c;
 	u8     adr;
+	u8     cont_clock;
 	void  *priv;
 
 	struct mutex mutex;
@@ -1479,7 +1475,11 @@ static int attach_init(struct stv_state *state)
 	//writereg(state, R367_TSTBUS, 0x80);      // Invert CLK
 
 	writereg(state, R367_OFDM_TSCFGH, 0x71);
-	writereg(state, R367_OFDM_TSCFGH, 0x70);
+	
+	if (state->cont_clock)
+		writereg(state, R367_OFDM_TSCFGH, 0xf0);
+	else
+		writereg(state, R367_OFDM_TSCFGH, 0x70);
 
 	writereg(state, R367_TOPCTRL, 0x10);
 
@@ -1520,36 +1520,12 @@ static int attach_init(struct stv_state *state)
 	return stat;
 }
 
-#ifdef USE_API3
-static void c_release(struct dvb_frontend* fe)
-#else
 static void release(struct dvb_frontend* fe)
-#endif
 {
 	struct stv_state *state=fe->demodulator_priv;
 	printk("%s\n", __FUNCTION__);
 	kfree(state);
 }
-
-#ifdef USE_API3
-static int c_init (struct dvb_frontend *fe)
-{
-	struct stv_state *state=fe->demodulator_priv;
-
-	if (mutex_trylock(&state->ctlock)==0)
-		return -EBUSY;
-	state->omode = OM_DVBC;
-	return 0;
-}
-
-static int c_sleep(struct dvb_frontend* fe)
-{
-	struct stv_state *state=fe->demodulator_priv;
-
-	mutex_unlock(&state->ctlock);
-	return 0;
-}
-#endif
 
 static int gate_ctrl(struct dvb_frontend *fe, int enable)
 {
@@ -1680,44 +1656,6 @@ static int ofdm_lock(struct stv_state *state)
 }
 
 
-#ifdef USE_API3
-static int set_parameters(struct dvb_frontend *fe,
-			  struct dvb_frontend_parameters *p)
-{
-	int stat;
-	struct stv_state *state = fe->demodulator_priv;
-	u32 OF = 0;
-	u32 IF;
-
-	if (fe->ops.tuner_ops.set_params)
-		fe->ops.tuner_ops.set_params(fe, p);
-
-	switch (state->omode) {
-	case OM_DVBC:
-	case OM_QAM_ITU_C:
-		state->modulation = p->u.qam.modulation;
-		state->symbol_rate = p->u.qam.symbol_rate;
-		break;
-	case OM_DVBT:
-		switch (p->u.ofdm.bandwidth) {
-		case BANDWIDTH_AUTO:
-		case BANDWIDTH_8_MHZ:
-			state->bandwidth = 8000000;
-			break;
-		case BANDWIDTH_7_MHZ:
-			state->bandwidth = 7000000;
-			break;
-		case BANDWIDTH_6_MHZ:
-			state->bandwidth = 6000000;
-			break;
-		default:
-			return -EINVAL;
-		}
-		break;
-	default:
-		return -EINVAL;
-	}
-#else
 static int set_parameters(struct dvb_frontend *fe)
 {
 	int stat;
@@ -1745,7 +1683,6 @@ static int set_parameters(struct dvb_frontend *fe)
 	state->modulation = fe->dtv_property_cache.modulation;
 	state->symbol_rate = fe->dtv_property_cache.symbol_rate;
 	state->bandwidth = fe->dtv_property_cache.bandwidth_hz;
-#endif
 	fe->ops.tuner_ops.get_if_frequency(fe, &IF);
 	//fe->ops.tuner_ops.get_frequency(fe, &IF);
 
@@ -2106,7 +2043,6 @@ static int c_get_tune_settings(struct dvb_frontend *fe,
 	return 0;
 }
 
-#ifndef USE_API3
 static int get_tune_settings(struct dvb_frontend *fe,
 			     struct dvb_frontend_tune_settings *sets)
 {
@@ -2119,32 +2055,6 @@ static int get_tune_settings(struct dvb_frontend *fe,
 		return -EINVAL;
 	}
 }
-#endif
-
-#ifdef USE_API3
-static void t_release(struct dvb_frontend* fe)
-{
-	//struct stv_state *state=fe->demodulator_priv;
-	//printk("%s\n", __FUNCTION__);
-	//kfree(state);
-}
-
-static int t_init (struct dvb_frontend *fe)
-{
-	struct stv_state *state=fe->demodulator_priv;
-	if (mutex_trylock(&state->ctlock)==0)
-		return -EBUSY;
-	state->omode = OM_DVBT;
-	return 0;
-}
-
-static int t_sleep(struct dvb_frontend* fe)
-{
-	struct stv_state *state=fe->demodulator_priv;
-	mutex_unlock(&state->ctlock);
-	return 0;
-}
-#endif
 
 #if 0
 static int t_get_frontend(struct dvb_frontend *fe, struct dvb_frontend_parameters *p)
@@ -2159,74 +2069,6 @@ static enum dvbfe_algo algo(struct dvb_frontend *fe)
 	return DVBFE_ALGO_CUSTOM;
 }
 #endif
-
-#ifdef USE_API3
-static struct dvb_frontend_ops c_ops = {
-	.info = {
-		.name = "STV0367 DVB-C",
-		.type = FE_QAM,
-		.frequency_stepsize = 62500,
-		.frequency_min = 47000000,
-		.frequency_max = 862000000,
-		.symbol_rate_min = 870000,
-		.symbol_rate_max = 11700000,
-		.caps = FE_CAN_QAM_16 | FE_CAN_QAM_32 | FE_CAN_QAM_64 |
-			FE_CAN_QAM_128 | FE_CAN_QAM_256 | FE_CAN_FEC_AUTO
-	},
-	.release = c_release,
-	.init = c_init,
-	.sleep = c_sleep,
-	.i2c_gate_ctrl = gate_ctrl,
-
-	.get_tune_settings = c_get_tune_settings,
-
-	.read_status = read_status,
-	.read_ber = read_ber,
-	.read_signal_strength = read_signal_strength,
-	.read_snr = read_snr,
-	.read_ucblocks = read_ucblocks,
-
-#if 1
-	.set_frontend = set_parameters,
-#else
-	.get_frontend_algo = algo,
-	.search = search,
-#endif
-};
-
-static struct dvb_frontend_ops t_ops = {
-	.info = {
-		.name			= "STV0367 DVB-T",
-		.type			= FE_OFDM,
-		.frequency_min		= 47125000,
-		.frequency_max		= 865000000,
-		.frequency_stepsize	= 166667,
-		.frequency_tolerance	= 0,
-		.caps = FE_CAN_FEC_1_2 | FE_CAN_FEC_2_3 |
-		FE_CAN_FEC_3_4 | FE_CAN_FEC_5_6 | FE_CAN_FEC_7_8 |
-		FE_CAN_FEC_AUTO |
-		FE_CAN_QAM_16 | FE_CAN_QAM_64 |
-		FE_CAN_QAM_AUTO |
-		FE_CAN_TRANSMISSION_MODE_AUTO |
-		FE_CAN_GUARD_INTERVAL_AUTO |
-		FE_CAN_HIERARCHY_AUTO | FE_CAN_RECOVER |
-		FE_CAN_MUTE_TS
-	},
-	.release = t_release,
-	.init = t_init,
-	.sleep = t_sleep,
-	.i2c_gate_ctrl = gate_ctrl,
-
-	.set_frontend = set_parameters,
-
-	.read_status = read_status,
-	.read_ber = read_ber,
-	.read_signal_strength = read_signal_strength,
-	.read_snr = read_snr,
-	.read_ucblocks = read_ucblocks,
-};
-
-#else
 
 static struct dvb_frontend_ops common_ops = {
 	.delsys = { SYS_DVBC_ANNEX_A, SYS_DVBT },
@@ -2262,7 +2104,6 @@ static struct dvb_frontend_ops common_ops = {
 	.read_snr = read_snr,
 	.read_ucblocks = read_ucblocks,
 };
-#endif
 
 
 static void init_state(struct stv_state *state, struct stv0367_cfg *cfg)
@@ -2271,19 +2112,13 @@ static void init_state(struct stv_state *state, struct stv0367_cfg *cfg)
 	u32 ulQAMInversion = 2;
 	state->omode = OM_NONE;
 	state->adr = cfg->adr;
+	state->cont_clock = cfg->cont_clock;
 
 	mutex_init(&state->mutex);
 	mutex_init(&state->ctlock);
 
-#ifdef USE_API3
-	memcpy(&state->c_frontend.ops, &c_ops, sizeof(struct dvb_frontend_ops));
-	memcpy(&state->t_frontend.ops, &t_ops, sizeof(struct dvb_frontend_ops));
-	state->c_frontend.demodulator_priv = state;
-	state->t_frontend.demodulator_priv = state;
-#else
 	memcpy(&state->frontend.ops, &common_ops, sizeof(struct dvb_frontend_ops));
 	state->frontend.demodulator_priv = state;
-#endif
 
 	state->master_clock = 58000000;
 	state->adc_clock = 58000000;
@@ -2307,12 +2142,7 @@ struct dvb_frontend *stv0367_attach(struct i2c_adapter *i2c, struct stv0367_cfg 
 
 	if (attach_init(state)<0)
 		goto error;
-#ifdef USE_API3
-	*fe_t = &state->t_frontend;
-	return &state->c_frontend;
-#else
 	return &state->frontend;
-#endif
 
 error:
 	printk("stv0367: not found\n");

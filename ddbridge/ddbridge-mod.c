@@ -1,9 +1,9 @@
 /*
  * ddbridge.c: Digital Devices PCIe bridge driver
  *
- * Copyright (C) 2010-2014 Digital Devices GmbH
- *                         Ralph Metzler <rmetzler@digitaldevices.de>
- *                         Marcus Metzler <mmetzler@digitaldevices.de>
+ * Copyright (C) 2010-2015 Digital Devices GmbH
+ *                         Marcus Metzler <mocm@metzlerbros.de>
+ *                         Ralph Metzler <rjkm@metzlerbros.de>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License

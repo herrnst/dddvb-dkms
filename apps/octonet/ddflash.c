@@ -319,7 +319,7 @@ static int flashcmp(struct ddflash *ddf, int fs, uint32_t addr, uint32_t maxlen,
 		}
 	}
 	printf("flash same as file\n");
-	return 0;
+	return -2;
 }
 
 
@@ -565,8 +565,10 @@ static int check_fw(struct ddflash *ddf, char *fn, uint32_t *fw_off)
 	uint32_t maxlen = 1024 * 1024;
 	
 	fd = open(fn, O_RDONLY);
-	if (fd < 0)
-		return fd;
+	if (fd < 0) {
+		printf("%s: not found\n", fn);
+		return -1;
+	}
 	off = lseek(fd, 0, SEEK_END);
 	if (off < 0)
 		return -1;
@@ -607,6 +609,7 @@ static int check_fw(struct ddflash *ddf, char *fn, uint32_t *fw_off)
 				if (cid[i] == ddf->id.device)
 					break;
 			if (i == cids) {
+				printf("%s: no compatible id\n", fn);
 				ret = -2; /* no compatible ID */
 				goto out;
 			}
@@ -622,8 +625,10 @@ static int check_fw(struct ddflash *ddf, char *fn, uint32_t *fw_off)
 	printf("version = %08x  %08x\n", version, ddf->id.hw);
 	printf("length = %u\n", length);
 	printf("fsize = %u, p = %u, f-p = %u\n", fsize, p, fsize - p);
-	if (devid == ddf->id.device && version <= (ddf->id.hw & 0xffffff))
+	if (devid == ddf->id.device && version <= (ddf->id.hw & 0xffffff)) {
+		printf("%s: old version\n", fn);
 		ret = -3; /* same id but no newer version */
+	}
 	
 out:
 	free(buf);
@@ -639,12 +644,13 @@ static int update_image(struct ddflash *ddf, char *fn,
 	int fs, res;
 	uint32_t fw_off = 0;
 
+	printf("Check %s\n", fn);
 	if (has_header) {
 		int ck;
 		
 		ck = check_fw(ddf, fn, &fw_off);
 		if (ck < 0)
-			return -2;
+			return ck;
 	}
 	
 	fs = open(fn, O_RDONLY);
@@ -653,7 +659,10 @@ static int update_image(struct ddflash *ddf, char *fn,
 		return -1;
 	}
 	res = flashcmp(ddf, fs, adr, len, fw_off);
-	if (res <= 0) 
+	if (res == -2) {
+		printf("%s: same as flash\n", fn);
+	}
+	if (res < 0) 
 		goto out;
 	res = flashwrite(ddf, fs, adr, len, fw_off);
 	if (res == 0)
@@ -661,6 +670,14 @@ static int update_image(struct ddflash *ddf, char *fn,
 out:
 	close(fs);
 	return res;
+}
+
+
+static int fexists(char *fn)
+{
+	struct stat b;
+
+	return (!stat(fn, &b));
 }
 
 static int update_flash(struct ddflash *ddf)
@@ -677,11 +694,19 @@ static int update_flash(struct ddflash *ddf)
 			stat |= 4;
 		if ((res = update_image(ddf, "/boot/uboot.img", 0xb0000, 0xb0000, 0)) == 1)
 			stat |= 2;
-		if ((res = update_image(ddf, "/config/fpga.img", 0x10000, 0xa0000, 1)) == 1)
-			stat |= 1;
-		if (res == -1)
-			if ((res = update_image(ddf, "/boot/fpga.img", 0x10000, 0xa0000, 1)) == 1)
+		if (fexists("/config/gtl.enabled")) {
+			if ((res = update_image(ddf, "/config/fpga_gtl.img", 0x10000, 0xa0000, 1)) == 1)
 				stat |= 1;
+			if (res == -1)
+				if ((res = update_image(ddf, "/boot/fpga_gtl.img", 0x10000, 0xa0000, 1)) == 1)
+					stat |= 1;
+		} else {
+			if ((res = update_image(ddf, "/config/fpga.img", 0x10000, 0xa0000, 1)) == 1)
+				stat |= 1;
+			if (res == -1)
+				if ((res = update_image(ddf, "/boot/fpga.img", 0x10000, 0xa0000, 1)) == 1)
+					stat |= 1;
+		}
 		break;
 	case 0x320:
 		//fname="/boot/DVBNetV1A_DD01_0300.bit";

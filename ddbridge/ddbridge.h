@@ -1,7 +1,7 @@
 /*
  * ddbridge.h: Digital Devices PCIe bridge driver
  *
- * Copyright (C) 2010-2014 Digital Devices GmbH
+ * Copyright (C) 2010-2015 Digital Devices GmbH
  *                         Ralph Metzler <rmetzler@digitaldevices.de>
  *
  * This program is free software; you can redistribute it and/or
@@ -41,7 +41,7 @@
 #include <linux/poll.h>
 #include <linux/io.h>
 #include <linux/pci.h>
-#include <linux/pci_ids.h>
+//#include <linux/pci_ids.h>
 #include <linux/timer.h>
 #include <linux/i2c.h>
 #include <linux/swab.h>
@@ -57,7 +57,6 @@
 #include <linux/types.h>
 #include <linux/sched.h>
 #include <linux/interrupt.h>
-#include <linux/i2c.h>
 #include <linux/mutex.h>
 #include <asm/dma.h>
 #include <asm/irq.h>
@@ -158,6 +157,7 @@ struct ddb_info {
 	u8    board_control;
 	u8    ns_num;
 	u8    mdio_num;
+	u8    con_clock;
 	struct ddb_regmap *regmap;
 };
 
@@ -380,6 +380,7 @@ struct ddb_link {
 	u32                    nr;
 	u32                    regs;
 	spinlock_t             lock;
+	struct mutex           flash_mutex;
 	struct ddb_lnb         lnb;
 	struct tasklet_struct  tasklet;
 };

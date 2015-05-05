@@ -1881,12 +1881,9 @@ static struct dvb_frontend_ops common_ops_2843 = {
 		.frequency_max = 865000000,	/* DVB-C: 862000000 */
 		.symbol_rate_min = 870000,
 		.symbol_rate_max = 11700000,
-		.caps = /* DVB-C */
-			FE_CAN_QAM_16 | FE_CAN_QAM_32 | FE_CAN_QAM_64 |
-			FE_CAN_QAM_128 | FE_CAN_QAM_256 |
-			FE_CAN_FEC_AUTO |
-			/* DVB-T */
-			FE_CAN_QAM_16 | FE_CAN_QAM_64 | FE_CAN_QAM_AUTO |
+		.caps = FE_CAN_QPSK | FE_CAN_QAM_16 | FE_CAN_QAM_32 |
+		        FE_CAN_QAM_64 | FE_CAN_QAM_128 | FE_CAN_QAM_256 |
+		        FE_CAN_QAM_AUTO | 
 			FE_CAN_FEC_1_2 | FE_CAN_FEC_2_3 | FE_CAN_FEC_3_4 |
 			FE_CAN_FEC_4_5 |
 			FE_CAN_FEC_5_6 | FE_CAN_FEC_7_8 | FE_CAN_FEC_AUTO |
@@ -1921,12 +1918,9 @@ static struct dvb_frontend_ops common_ops_2837 = {
 		.frequency_max = 865000000,	/* DVB-C: 862000000 */
 		.symbol_rate_min = 870000,
 		.symbol_rate_max = 11700000,
-		.caps = /* DVB-C */
-			FE_CAN_QAM_16 | FE_CAN_QAM_32 | FE_CAN_QAM_64 |
-			FE_CAN_QAM_128 | FE_CAN_QAM_256 |
-			FE_CAN_FEC_AUTO |
-			/* DVB-T */
-			FE_CAN_QAM_16 | FE_CAN_QAM_64 | FE_CAN_QAM_AUTO |
+		.caps = FE_CAN_QPSK | FE_CAN_QAM_16 | FE_CAN_QAM_32 |
+		        FE_CAN_QAM_64 | FE_CAN_QAM_128 | FE_CAN_QAM_256 |
+		        FE_CAN_QAM_AUTO | 
 			FE_CAN_FEC_1_2 | FE_CAN_FEC_2_3 | FE_CAN_FEC_3_4 |
 			FE_CAN_FEC_4_5 |
 			FE_CAN_FEC_5_6 | FE_CAN_FEC_7_8 | FE_CAN_FEC_AUTO |
