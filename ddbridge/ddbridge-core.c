@@ -46,6 +46,10 @@ static int fmode;
 module_param(fmode, int, 0444);
 MODULE_PARM_DESC(fmode, "frontend emulation mode");
 
+static int old_quattro;
+module_param(old_quattro, int, 0444);
+MODULE_PARM_DESC(old_quattro, "old quattro LNB input order ");
+
 #define DDB_MAX_ADAPTER 64
 static struct ddb *ddbs[DDB_MAX_ADAPTER];
 
@@ -412,7 +416,7 @@ static void ddb_input_stop(struct ddb_input *input)
 static void ddb_input_start(struct ddb_input *input)
 {
 	struct ddb *dev = input->port->dev;
-	u32 tsbase = TS_INPUT_BASE + input->nr * 0x10; 
+	/* u32 tsbase = TS_INPUT_BASE + input->nr * 0x10; */
 	u32 tag = DDB_LINK_TAG(input->port->lnr);
 
 	if (input->dma) {
@@ -1422,10 +1426,17 @@ static int max_set_tone(struct dvb_frontend *fe, fe_sec_tone_mode_t tone)
 		break;
 	case 1:
 	case 2:
-		if (dvb->tone == SEC_TONE_ON)
-			tuner |= 1;
-		if (dvb->voltage == SEC_VOLTAGE_18)
-			tuner |= 2;
+		if (old_quattro) {
+			if (dvb->tone == SEC_TONE_ON)
+				tuner |= 2;
+			if (dvb->voltage == SEC_VOLTAGE_18)
+				tuner |= 1;
+		} else {
+			if (dvb->tone == SEC_TONE_ON)
+				tuner |= 1;
+			if (dvb->voltage == SEC_VOLTAGE_18)
+				tuner |= 2;
+		}
 		res = max_set_input_unlocked(fe, tuner);
 		break;
 	}
@@ -1468,10 +1479,17 @@ static int max_set_voltage(struct dvb_frontend *fe, fe_sec_voltage_t voltage)
 			dev->link[port->lnr].lnb.voltages |= (1ULL << input->nr);
 		nv = dev->link[port->lnr].lnb.voltages;
 		
-		if (dvb->tone == SEC_TONE_ON)
-			tuner |= 1;
-		if (dvb->voltage == SEC_VOLTAGE_18)
-			tuner |= 2;
+		if (old_quattro) {
+			if (dvb->tone == SEC_TONE_ON)
+				tuner |= 2;
+			if (dvb->voltage == SEC_VOLTAGE_18)
+				tuner |= 1;
+		} else {
+			if (dvb->tone == SEC_TONE_ON)
+				tuner |= 1;
+			if (dvb->voltage == SEC_VOLTAGE_18)
+				tuner |= 2;
+		}
 		res = max_set_input_unlocked(fe, tuner);
 		
 		if (nv != ov) {
@@ -1479,8 +1497,13 @@ static int max_set_voltage(struct dvb_frontend *fe, fe_sec_voltage_t voltage)
 				lnb_set_voltage(dev, port->lnr, 0, SEC_VOLTAGE_13);
 				if (fmode == 1) {
 					lnb_set_voltage(dev, port->lnr, 0, SEC_VOLTAGE_13);
-					lnb_set_voltage(dev, port->lnr, 1, SEC_VOLTAGE_13);
-					lnb_set_voltage(dev, port->lnr, 2, SEC_VOLTAGE_18);
+					if (old_quattro) {
+						lnb_set_voltage(dev, port->lnr, 1, SEC_VOLTAGE_18);
+						lnb_set_voltage(dev, port->lnr, 2, SEC_VOLTAGE_13);
+					} else {
+						lnb_set_voltage(dev, port->lnr, 1, SEC_VOLTAGE_13);
+						lnb_set_voltage(dev, port->lnr, 2, SEC_VOLTAGE_18);
+					}
 					lnb_set_voltage(dev, port->lnr, 3, SEC_VOLTAGE_18);
 				}
 			} else {
@@ -1528,8 +1551,13 @@ static int lnb_init_fmode(struct ddb *dev, struct ddb_link *link, u32 fmode)
 	if (fmode == 2 || fmode == 1) {
 		mutex_lock(&link->lnb.lock);
 		lnb_set_tone(dev, l, 0, SEC_TONE_OFF);
-		lnb_set_tone(dev, l, 1, SEC_TONE_OFF);
-		lnb_set_tone(dev, l, 2, SEC_TONE_ON);
+		if (old_quattro) {
+			lnb_set_tone(dev, l, 1, SEC_TONE_OFF);
+			lnb_set_tone(dev, l, 2, SEC_TONE_ON);
+		} else {
+			lnb_set_tone(dev, l, 1, SEC_TONE_ON);
+			lnb_set_tone(dev, l, 2, SEC_TONE_OFF);
+		}
 		lnb_set_tone(dev, l, 3, SEC_TONE_ON);
 		mutex_unlock(&link->lnb.lock);
 	}
@@ -3916,7 +3944,8 @@ static ssize_t ctemp_show(struct device *device,
 	if (!adap)
 		return 0;
 	if (i2c_read_regs(adap, 0x49, 0, tmp, 2) < 0)
-		return sprintf(buf, "no sensor\n");
+		if (i2c_read_regs(adap, 0x4d, 0, tmp, 2) < 0)
+			return sprintf(buf, "no sensor\n");
 	temp = tmp[0] * 1000;
 	return sprintf(buf, "%d\n", temp);
 }
@@ -4306,8 +4335,7 @@ static void ddb_device_attrs_del(struct ddb *dev)
 		device_remove_file(dev->ddb_dev, &ddb_attrs_mod[i]);
 	for (i = 0; i < dev->link[0].info->fan_num; i++)
 		device_remove_file(dev->ddb_dev, &ddb_attrs_fan[i]);
-	if (dev->link[0].info->regmap->i2c)
-	for (i = 0; i < dev->link[0].info->regmap->i2c->num; i++) {
+	for (i = 0; i < dev->i2c_num && i < 4; i++) {
 		if (dev->link[0].info->led_num)
 			device_remove_file(dev->ddb_dev, &ddb_attrs_led[i]);
 		device_remove_file(dev->ddb_dev, &ddb_attrs_snr[i]);
@@ -4333,17 +4361,16 @@ static int ddb_device_attrs_add(struct ddb *dev)
 	for (i = 0; i < dev->link[0].info->fan_num; i++)
 		if (device_create_file(dev->ddb_dev, &ddb_attrs_fan[i]))
 			goto fail;
-	if (dev->link[0].info->regmap->i2c)
-		for (i = 0; i < dev->link[0].info->regmap->i2c->num; i++) {
-			if (device_create_file(dev->ddb_dev, &ddb_attrs_snr[i]))
+	for (i = 0; i < dev->i2c_num && i < 4; i++) {
+		if (device_create_file(dev->ddb_dev, &ddb_attrs_snr[i]))
+			goto fail;
+		if (device_create_file(dev->ddb_dev, &ddb_attrs_ctemp[i]))
+			goto fail;
+		if (dev->link[0].info->led_num)
+			if (device_create_file(dev->ddb_dev,
+					       &ddb_attrs_led[i]))
 				goto fail;
-			if (device_create_file(dev->ddb_dev, &ddb_attrs_ctemp[i]))
-				goto fail;
-			if (dev->link[0].info->led_num)
-				if (device_create_file(dev->ddb_dev,
-						       &ddb_attrs_led[i]))
-					goto fail;
-		}
+	}
 	return 0;
 fail:
 	return -1;
@@ -4540,7 +4567,6 @@ static int ddb_gtl_init(struct ddb *dev)
 static int ddb_init_boards(struct ddb *dev)
 {
 	struct ddb_info *info;
-	struct ddb_regmap *rm;
 	u32 l;
 	
 	for (l = 0; l < DDB_MAX_LINK; l++) {

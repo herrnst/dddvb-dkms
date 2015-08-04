@@ -1,3 +1,10 @@
+0.9.19b 2015.06.15
+- fix version number
+- option "old_quattro=1" for old MAX S8 input numbering
+  new is "VL VH HL HH", old is "VL HL VH HH"
+- set drive strength in mxl5xx to 1 to fix problems with
+  8th demod
+	
 0.9.19 2015.06.14
 - lock flash access
 - support serial numbers for newer cards

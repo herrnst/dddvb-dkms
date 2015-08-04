@@ -1643,7 +1643,7 @@ static int probe(struct mxl *state, struct mxl5xx_cfg *cfg)
 	}
 	for (j = 0; j < state->base->tuner_num; j++)
 		enable_tuner(state, j, 1);
-	//set_drive_strength(state, 1);
+	set_drive_strength(state, 1);
 	return 0;
 }
 
