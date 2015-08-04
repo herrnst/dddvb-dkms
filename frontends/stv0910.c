@@ -787,7 +787,7 @@ static int set_mclock(struct stv *state, u32 MasterClock)
 	fvco = (quartz * 2 * ndiv) / idf;
 	state->base->mclk = fvco / (2 * odf) * 1000000;
 
-	pr_info("ndiv = %d, MasterClock = %d\n", ndiv, state->base->mclk);
+	/*pr_info("ndiv = %d, MasterClock = %d\n", ndiv, state->base->mclk);*/
 	return 0;
 }
 
@@ -854,7 +854,7 @@ static int Start(struct stv *state, struct dtv_frontend_properties *p)
 		  ((symb >> 8) & 0x7F));
 	write_reg(state, RSTV0910_P2_SFRINIT0 + state->regoff, (symb & 0xFF));
 
-	pr_info("symb = %u\n", symb);
+	/*pr_info("symb = %u\n", symb);*/
 
 	state->DEMOD |= 0x80;
 	write_reg(state, RSTV0910_P2_DEMOD + state->regoff, state->DEMOD);
@@ -932,7 +932,7 @@ static int probe(struct stv *state)
 
 	if (id != 0x51)
 		return -EINVAL;
-	pr_info("Found STV0910 id=0x%02x\n", id);
+	pr_info("stv0910: found STV0910 id=0x%02x\n", id);
 
 	 /* Configure the I2C repeater to off */
 	write_reg(state, RSTV0910_P1_I2CRPT, 0x24);
@@ -1015,7 +1015,6 @@ static void release(struct dvb_frontend *fe)
 
 	state->base->count--;
 	if (state->base->count == 0) {
-		pr_info("remove STV base\n");
 		list_del(&state->base->stvlist);
 		kfree(state->base);
 	}
@@ -1211,7 +1210,8 @@ static int send_master_cmd(struct dvb_frontend *fe,
 	u16 offs = state->nr ? 0x40 : 0;
 	int i;
 
-	pr_info("master_cmd %02x %02x %02x %02x\n", cmd->msg[0],  cmd->msg[1],  cmd->msg[2],  cmd->msg[3]);
+	/*pr_info("master_cmd %02x %02x %02x %02x\n",
+	  cmd->msg[0],  cmd->msg[1],  cmd->msg[2],  cmd->msg[3]);*/
 	write_reg(state, RSTV0910_P1_DISTXCFG + offs, 0x3E);
 	for (i = 0; i < cmd->msg_len; i++) {
 		wait_dis(state, 0x40, 0x00);
@@ -1236,11 +1236,9 @@ static int send_burst(struct dvb_frontend *fe, fe_sec_mini_cmd_t burst)
 	u8 value;
 
 	if (burst == SEC_MINI_A) {
-		pr_info("burst A\n");
 		write_reg(state, RSTV0910_P1_DISTXCFG + offs, 0x3F);
 		value = 0x00;
 	} else {
-		pr_info("burst B\n");
 		write_reg(state, RSTV0910_P1_DISTXCFG + offs, 0x3E);
 		value = 0xFF;
 	}
@@ -1256,7 +1254,6 @@ static int sleep(struct dvb_frontend *fe)
 {
 	struct stv *state = fe->demodulator_priv;
 
-	pr_info("sleep %d\n", state->nr);
 	Stop(state);
 	return 0;
 }

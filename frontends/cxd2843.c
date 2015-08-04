@@ -3,7 +3,7 @@
  * Also supports the CXD2837ER DVB-T/T2/C and the
  * CXD2838ER ISDB-T demodulator.
  *
- * Copyright (C) 2013-2014 Digital Devices GmbH
+ * Copyright (C) 2013-2015 Digital Devices GmbH
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -855,7 +855,6 @@ static void Sleep_to_ActiveIT(struct cxd_state *state, u32 iffreq)
 	u8 TSIF_data[2] = { 0x61, 0x60 } ; /* 20.5/41 MHz */
 	/*u8 TSIF_data[2] = { 0x60,0x00 } ; */ /* 24 MHz */
 
-	pr_info("%s\n", __func__);
 
 	ConfigureTS(state, ActiveIT);
 
@@ -1175,7 +1174,8 @@ static int set_parameters(struct dvb_frontend *fe)
 		state->plp = fe->dtv_property_cache.stream_id & 0xff;
 	}
 	/* printk("PLP = %08x, bw = %u\n", state->plp, state->bw); */
-	fe->ops.tuner_ops.get_if_frequency(fe, &IF);
+	if (fe->ops.tuner_ops.get_if_frequency)
+		fe->ops.tuner_ops.get_if_frequency(fe, &IF);
 	stat = Start(state, IF);
 	return stat;
 }

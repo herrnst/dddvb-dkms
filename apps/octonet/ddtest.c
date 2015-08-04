@@ -12,11 +12,14 @@
 
 #define DDB_MAGIC 'd'
 
+static uint32_t linknr = 0;
+
 struct ddb_flashio {
 	__u8 *write_buf;
 	__u32 write_len;
 	__u8 *read_buf;
 	__u32 read_len;
+	__u32 link;
 };
 
 struct ddb_gpio {
@@ -144,6 +147,7 @@ int FlashIO(int ddb, uint8_t *wbuf, uint32_t wlen, uint8_t *rbuf, uint32_t rlen)
 		.write_len=wlen,
 		.read_buf=rbuf,
 		.read_len=rlen,
+		.link=linknr,
 	};
 	
 	return ioctl(ddb, IOCTL_DDB_FLASHIO, &fio);

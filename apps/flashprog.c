@@ -35,6 +35,8 @@
 
 #define DDB_MAGIC 'd'
 
+static uint32_t linknr = 0;
+
 struct ddb_id {
 	__u16 vendor;
 	__u16 device;
@@ -49,6 +51,7 @@ struct ddb_flashio {
 	__u32 write_len;
 	__u8 *read_buf;
 	__u32 read_len;
+	__u32 link;
 };
 
 #define IOCTL_DDB_FLASHIO  _IOWR(DDB_MAGIC, 0x00, struct ddb_flashio)
@@ -62,6 +65,7 @@ int flashio(int ddb, uint8_t *wbuf, uint32_t wlen, uint8_t *rbuf, uint32_t rlen)
 		.write_len=wlen,
 		.read_buf=rbuf,
 		.read_len=rlen,
+		.link=linknr,
 	};
 	
 	return ioctl(ddb, IOCTL_DDB_FLASHIO, &fio);
@@ -483,6 +487,9 @@ int main(int argc, char **argv)
 			break;
 		case 'n':
 			ddbnum = strtol(optarg, NULL, 0);
+			break;
+		case 'l':
+			linknr = strtol(optarg, NULL, 0);
 			break;
 		case 'f':
 			force = 1;

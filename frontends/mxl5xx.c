@@ -46,10 +46,6 @@
 #include "mxl5xx_regs.h"
 #include "mxl5xx_defs.h"
 
-u8 hydra_fw[] = {
-/* #include "mxl5xx_fw.h" */
-};
-
 #define BYTE0(v) ((v >>  0) & 0xff)
 #define BYTE1(v) ((v >>  8) & 0xff)
 #define BYTE2(v) ((v >> 16) & 0xff)
@@ -69,6 +65,7 @@ struct mxl_base {
 	u32                  sku_type;
 	u32                  chipversion;
 	u32                  clock;
+	u32                  fwversion;
 	
 	u8                  *ts_map;
 	u8                   can_clkout;
@@ -105,6 +102,18 @@ static void le32_to_cpusn(u32 *data, u32 size)
 		le32_to_cpus(data);
 }
 
+static void flip_data_in_dword(u32 size, u8 *d)
+{
+	u32 i;
+	u8 t;
+
+	for (i = 0; i < size; i += 4) {
+		t = d[i + 3]; d[i + 3] = d[i]; d[i] = t;
+		t = d[i + 2]; d[i + 2] = d[i + 1]; d[i + 1] = t;
+	}
+}
+
+
 static void convert_endian(u8 flag, u32 size, u8 *d)
 {
 	u32 i;
@@ -120,6 +129,22 @@ static void convert_endian(u8 flag, u32 size, u8 *d)
 		d[i + 2] ^= d[i + 1];
 		d[i + 1] ^= d[i + 2];
 	}
+
+	switch (size & 3) {
+	case 0: case 1: /* do nothing */ break;
+	case 2:
+		d[i + 0] ^= d[i + 1];
+		d[i + 1] ^= d[i + 0];
+		d[i + 0] ^= d[i + 1];
+		break;
+		
+	case 3:
+		d[i + 0] ^= d[i + 2];
+		d[i + 2] ^= d[i + 0];
+		d[i + 0] ^= d[i + 2];
+		break;
+	}
+	    
 }
 
 static int i2c_write(struct i2c_adapter *adap, u8 adr,
@@ -150,11 +175,52 @@ static int i2cwrite(struct mxl *state, u8 *data, int len)
 	return i2c_write(state->base->i2c, state->base->adr, data, len);
 }
 
+static int read_register_unlocked(struct mxl *state, u32 reg, u32 *val)
+{
+	int stat;
+	u8 data[MXL_HYDRA_REG_SIZE_IN_BYTES + MXL_HYDRA_I2C_HDR_SIZE] = {
+		MXL_HYDRA_PLID_REG_READ, 0x04,
+		GET_BYTE(reg, 0), GET_BYTE(reg, 1),
+		GET_BYTE(reg, 2), GET_BYTE(reg, 3),
+	};
+
+	stat = i2cwrite(state, data,
+			MXL_HYDRA_REG_SIZE_IN_BYTES + MXL_HYDRA_I2C_HDR_SIZE);
+	if (stat)
+		pr_err("i2c read error 1\n");
+	if (!stat)
+		stat = i2cread(state, (u8 *) val, MXL_HYDRA_REG_SIZE_IN_BYTES);
+	le32_to_cpus(val);
+	if (stat)
+		pr_err("i2c read error 2\n");
+	return stat;
+}
+
+
+#define DMA_I2C_INTERRUPT_ADDR 0x8000011C
+#define DMA_INTR_PROT_WR_CMP 0x08
+
 static int send_command(struct mxl *state, u32 size, u8 *buf)
 {
 	int stat;
-
+	u32 val, count = 10;
+	
 	mutex_lock(&state->base->i2c_lock);
+	if (state->base->fwversion > 0x02010109)  {
+		read_register_unlocked(state, DMA_I2C_INTERRUPT_ADDR, &val);
+		if (DMA_INTR_PROT_WR_CMP & val)
+			pr_info("mxl5xx: send_command busy\n");
+		while ((DMA_INTR_PROT_WR_CMP & val) && --count) {
+			mutex_unlock(&state->base->i2c_lock);
+			usleep_range(1000, 2000);
+			mutex_lock(&state->base->i2c_lock);
+			read_register_unlocked(state, DMA_I2C_INTERRUPT_ADDR, &val);
+		}
+		if (!count) {
+			pr_info("mxl5xx: send_command busy\n");
+			return -EBUSY;
+		}
+	}
 	stat = i2cwrite(state, buf, size);
 	mutex_unlock(&state->base->i2c_lock);
 	return stat;
@@ -436,7 +502,6 @@ static int set_parameters(struct dvb_frontend *fe)
 		while (time_before(jiffies, state->base->next_tune))
 			msleep(10);
 	state->base->next_tune = jiffies + msecs_to_jiffies(100);
-	pr_info("mxl5xx tune\n");
 	BUILD_HYDRA_CMD(MXL_HYDRA_DEMOD_SET_PARAM_CMD, MXL_CMD_WRITE,
 			cmdSize, &demodChanCfg, cmdBuff);
 	stat = send_command(state, cmdSize + MXL_HYDRA_CMD_HEADER_SIZE, &cmdBuff[0]);
@@ -651,17 +716,6 @@ static u32 get_big_endian(u8 numOfBits, const u8 buf[])
 	return retValue;
 }
 
-static void flip_data_in_dword(u32 size, u8 *d)
-{
-	u32 i;
-	u8 t;
-
-	for (i = 0; i < size; i += 4) {
-		t = d[i + 3]; d[i + 3] = d[i]; d[i] = t;
-		t = d[i + 2]; d[i + 2] = d[i + 1]; d[i + 1] = t;
-	}
-}
-
 static int write_fw_segment(struct mxl *state,
 			    u32 MemAddr, u32 totalSize, u8 *dataPtr)
 {
@@ -684,7 +738,8 @@ static int write_fw_segment(struct mxl *state,
 		wBufPtr = &wMsgBuffer[0];
 		memset((void *) wBufPtr, 0, size);
 		memcpy((void *) wBufPtr, (void *) dataPtr, origSize);
-		flip_data_in_dword(size, wBufPtr);
+		//flip_data_in_dword(size, wBufPtr);
+		convert_endian(1, size, wBufPtr);
 		status  = write_firmware_block(state, MemAddr, size, wBufPtr);
 		if (status)
 			return status;
@@ -846,7 +901,7 @@ static int firmware_download(struct mxl *state, u8 *mbin, u32 mbin_len)
 	if (!firmware_is_alive(state))
 		return -1;
 
-	pr_info("Hydra FW alive. Hail!\n");
+	pr_info("mxl5xx: Hydra FW alive. Hail!\n");
 
 	/* sometimes register values are wrong shortly after first heart beats */
 	msleep(50);
@@ -1022,6 +1077,70 @@ static int cfg_ts_pad_mux(struct mxl *state, MXL_BOOL_E enableSerialTS)
 	return status;
 }
 
+
+static int set_drive_strength(struct mxl *state,
+			      MXL_HYDRA_TS_DRIVE_STRENGTH_E tsDriveStrength)
+{
+	int stat = 0;
+	u32 val;
+
+	read_register(state, 0x90000194, &val);
+	pr_info("mxl5xx: DIGIO = %08x\n", val);
+	pr_info("mxl5xx: set drive_strength = %u\n", tsDriveStrength);
+	
+	
+	stat |= SET_REG_FIELD_DATA(PAD_MUX_PAD_DRV_DIGIO_00, tsDriveStrength);
+	stat |= SET_REG_FIELD_DATA(PAD_MUX_PAD_DRV_DIGIO_05, tsDriveStrength);
+	stat |= SET_REG_FIELD_DATA(PAD_MUX_PAD_DRV_DIGIO_06, tsDriveStrength);
+	stat |= SET_REG_FIELD_DATA(PAD_MUX_PAD_DRV_DIGIO_11, tsDriveStrength);
+	stat |= SET_REG_FIELD_DATA(PAD_MUX_PAD_DRV_DIGIO_12, tsDriveStrength);
+	stat |= SET_REG_FIELD_DATA(PAD_MUX_PAD_DRV_DIGIO_13, tsDriveStrength);
+	stat |= SET_REG_FIELD_DATA(PAD_MUX_PAD_DRV_DIGIO_14, tsDriveStrength);
+	stat |= SET_REG_FIELD_DATA(PAD_MUX_PAD_DRV_DIGIO_16, tsDriveStrength);
+	stat |= SET_REG_FIELD_DATA(PAD_MUX_PAD_DRV_DIGIO_17, tsDriveStrength);
+	stat |= SET_REG_FIELD_DATA(PAD_MUX_PAD_DRV_DIGIO_18, tsDriveStrength);
+	stat |= SET_REG_FIELD_DATA(PAD_MUX_PAD_DRV_DIGIO_22, tsDriveStrength);
+	stat |= SET_REG_FIELD_DATA(PAD_MUX_PAD_DRV_DIGIO_23, tsDriveStrength);
+	stat |= SET_REG_FIELD_DATA(PAD_MUX_PAD_DRV_DIGIO_24, tsDriveStrength);
+	stat |= SET_REG_FIELD_DATA(PAD_MUX_PAD_DRV_DIGIO_25, tsDriveStrength);
+	stat |= SET_REG_FIELD_DATA(PAD_MUX_PAD_DRV_DIGIO_29, tsDriveStrength);
+	stat |= SET_REG_FIELD_DATA(PAD_MUX_PAD_DRV_DIGIO_30, tsDriveStrength);
+	stat |= SET_REG_FIELD_DATA(PAD_MUX_PAD_DRV_DIGIO_31, tsDriveStrength);
+
+	return stat;
+}
+
+
+static int enable_tuner(struct mxl *state, u32 tuner, u32 enable)
+{
+	int stat = 0;
+	MxL_HYDRA_TUNER_CMD ctrlTunerCmd;
+	u8 cmdSize = sizeof(ctrlTunerCmd);
+	u8 cmdBuff[MXL_HYDRA_OEM_MAX_CMD_BUFF_LEN];
+	u32 val, count = 10;
+	
+	ctrlTunerCmd.tunerId = tuner;
+	ctrlTunerCmd.enable = enable;
+	BUILD_HYDRA_CMD(MXL_HYDRA_TUNER_ACTIVATE_CMD, MXL_CMD_WRITE, cmdSize, &ctrlTunerCmd, cmdBuff);
+	stat = send_command(state, cmdSize + MXL_HYDRA_CMD_HEADER_SIZE, &cmdBuff[0]);
+	if (stat)
+		return stat;
+#if 1
+	read_register(state, HYDRA_TUNER_ENABLE_COMPLETE, &val);
+	while (--count && !((val >> tuner) & 1)) {
+		msleep(20);
+		read_register(state, HYDRA_TUNER_ENABLE_COMPLETE, &val);
+	}
+	if (!count)
+		return -1;
+	read_register(state, HYDRA_TUNER_ENABLE_COMPLETE, &val);
+	pr_info("mxl5xx: tuner %u ready = %u\n", tuner , (val >> tuner) & 1);
+#endif
+	
+	return 0;
+}
+
+
 static int config_ts(struct mxl *state, MXL_HYDRA_DEMOD_ID_E demodId,
 		     MXL_HYDRA_MPEGOUT_PARAM_T *mpegOutParamPtr)
 {
@@ -1093,6 +1212,8 @@ static int config_ts(struct mxl *state, MXL_HYDRA_DEMOD_ID_E demodId,
 		{PAD_MUX_DIGIO_18_PINMUX_SEL}, {PAD_MUX_DIGIO_10_PINMUX_SEL},
 		{PAD_MUX_DIGIO_09_PINMUX_SEL}, {PAD_MUX_DIGIO_02_PINMUX_SEL} };
 
+	demodId = state->base->ts_map[demodId];
+	
 	if (MXL_ENABLE == mpegOutParamPtr->enable) {
 		if (mpegOutParamPtr->mpegMode == MXL_HYDRA_MPEG_MODE_PARALLEL)	{
 #if 0
@@ -1281,10 +1402,6 @@ static int load_fw(struct mxl *state, struct mxl5xx_cfg *cfg)
 	if (cfg->fw)
 		return firmware_download(state, cfg->fw, cfg->fw_len);
 	
-#ifdef FW_INCLUDED
-	return firmware_download(state, hydra_fw, sizeof(hydra_fw));
-#endif
-	
 	if (!cfg->fw_read)
 		return -1;
 
@@ -1350,23 +1467,24 @@ static int validate_sku(struct mxl *state)
 static int get_fwinfo(struct mxl *state)
 {
 	int status;
-	u32 regData = 0;
+	u32 val = 0;
 
-	status = GET_REG_FIELD_DATA(PAD_MUX_BOND_OPTION, &regData);
+	status = GET_REG_FIELD_DATA(PAD_MUX_BOND_OPTION, &val);
 	if (status)
 		return status;
-	pr_info("chipID=%08x\n", regData);
+	pr_info("mxl5xx: chipID=%08x\n", val);
 
-	status = GET_REG_FIELD_DATA(PRCM_AFE_CHIP_MMSK_VER, &regData);
+	status = GET_REG_FIELD_DATA(PRCM_AFE_CHIP_MMSK_VER, &val);
 	if (status)
 		return status;
-	pr_info("chipVer=%08x\n", regData);
+	pr_info("mxl5xx: chipVer=%08x\n", val);
 
-	status = read_register(state, HYDRA_FIRMWARE_VERSION, &regData);
+	status = read_register(state, HYDRA_FIRMWARE_VERSION, &val);
 	if (status)
 		return status;
-	pr_info("FWVer=%08x\n", regData);
-	
+	pr_info("mx5xx: FWVer=%08x\n", val);
+
+	state->base->fwversion = val;
 	return status;
 }
 
@@ -1380,7 +1498,7 @@ static u8 tsMap1_to_1[MXL_HYDRA_DEMOD_MAX] =
 	MXL_HYDRA_DEMOD_ID_4,
 	MXL_HYDRA_DEMOD_ID_5,
 	MXL_HYDRA_DEMOD_ID_6,
-	MXL_HYDRA_DEMOD_ID_7
+	MXL_HYDRA_DEMOD_ID_7,
 };
 
 static u8 tsMap54x[MXL_HYDRA_DEMOD_MAX] =
@@ -1392,7 +1510,7 @@ static u8 tsMap54x[MXL_HYDRA_DEMOD_MAX] =
 	MXL_HYDRA_DEMOD_MAX,
 	MXL_HYDRA_DEMOD_MAX,
 	MXL_HYDRA_DEMOD_MAX,
-	MXL_HYDRA_DEMOD_MAX
+	MXL_HYDRA_DEMOD_MAX,
 };
 
 static int probe(struct mxl *state, struct mxl5xx_cfg *cfg)
@@ -1480,7 +1598,7 @@ static int probe(struct mxl *state, struct mxl5xx_cfg *cfg)
 		state->base->chipversion = 0;
 	else
 		state->base->chipversion = (chipver == 2) ? 2 : 1;
-	pr_info("Hydra chip version %u\n", state->base->chipversion);
+	pr_info("mxl5xx: Hydra chip version %u\n", state->base->chipversion);
 
 	cfg_dev_xtal(state, cfg->clk, cfg->cap, 0);
 		
@@ -1523,6 +1641,9 @@ static int probe(struct mxl *state, struct mxl5xx_cfg *cfg)
 		if (status)
 			return status;
 	}
+	for (j = 0; j < state->base->tuner_num; j++)
+		enable_tuner(state, j, 1);
+	//set_drive_strength(state, 1);
 	return 0;
 }
 

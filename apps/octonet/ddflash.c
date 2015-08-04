@@ -69,6 +69,7 @@ struct ddb_flashio {
 	__u32 write_len;
 	__u8 *read_buf;
 	__u32 read_len;
+	__u32 link;
 };
 
 #define IOCTL_DDB_FLASHIO  _IOWR(DDB_MAGIC, 0x00, struct ddb_flashio)
@@ -97,6 +98,7 @@ int flashio(int ddb, uint8_t *wbuf, uint32_t wlen, uint8_t *rbuf, uint32_t rlen)
 		.write_len=wlen,
 		.read_buf=rbuf,
 		.read_len=rlen,
+		.link=0,
 	};
 	
 	return ioctl(ddb, IOCTL_DDB_FLASHIO, &fio);
@@ -625,11 +627,14 @@ static int check_fw(struct ddflash *ddf, char *fn, uint32_t *fw_off)
 	printf("version = %08x  %08x\n", version, ddf->id.hw);
 	printf("length = %u\n", length);
 	printf("fsize = %u, p = %u, f-p = %u\n", fsize, p, fsize - p);
-	if (devid == ddf->id.device && version <= (ddf->id.hw & 0xffffff)) {
-		printf("%s: old version\n", fn);
-		ret = -3; /* same id but no newer version */
-	}
-	
+	if (devid == ddf->id.device) {
+		if (version <= (ddf->id.hw & 0xffffff)) {
+			printf("%s: old version\n", fn);
+			ret = -3; /* same id but no newer version */
+		}
+	} else
+		ret = 1;
+
 out:
 	free(buf);
 	printf("check_fw = %d\n", ret);
@@ -639,9 +644,9 @@ out:
 
 static int update_image(struct ddflash *ddf, char *fn, 
 			uint32_t adr, uint32_t len,
-			int has_header)
+			int has_header, int no_change)
 {
-	int fs, res;
+	int fs, res = 0;
 	uint32_t fw_off = 0;
 
 	printf("Check %s\n", fn);
@@ -651,8 +656,9 @@ static int update_image(struct ddflash *ddf, char *fn,
 		ck = check_fw(ddf, fn, &fw_off);
 		if (ck < 0)
 			return ck;
+		if (ck == 1 && no_change)
+			return 0;
 	}
-	
 	fs = open(fn, O_RDONLY);
 	if (fs < 0 ) {
 		printf("File %s not found \n", fn);
@@ -690,28 +696,40 @@ static int update_flash(struct ddflash *ddf)
 	case 0x301:
 	case 0x302:
 	case 0x307:
-		if ((res = update_image(ddf, "/boot/bs.img", 0x4000, 0x1000, 0)) == 1)
+		if ((res = update_image(ddf, "/boot/bs.img", 0x4000, 0x1000, 0, 0)) == 1)
 			stat |= 4;
-		if ((res = update_image(ddf, "/boot/uboot.img", 0xb0000, 0xb0000, 0)) == 1)
+		if ((res = update_image(ddf, "/boot/uboot.img", 0xb0000, 0xb0000, 0, 0)) == 1)
 			stat |= 2;
 		if (fexists("/config/gtl.enabled")) {
-			if ((res = update_image(ddf, "/config/fpga_gtl.img", 0x10000, 0xa0000, 1)) == 1)
+			if ((res = update_image(ddf, "/config/fpga_gtl.img", 0x10000, 0xa0000, 1, 0)) == 1)
 				stat |= 1;
 			if (res == -1)
-				if ((res = update_image(ddf, "/boot/fpga_gtl.img", 0x10000, 0xa0000, 1)) == 1)
+				if ((res = update_image(ddf, "/boot/fpga_gtl.img", 0x10000, 0xa0000, 1, 0)) == 1)
+					stat |= 1;
+		} else if (fexists("/config/gtl.disabled")) {
+			if ((res = update_image(ddf, "/config/fpga.img", 0x10000, 0xa0000, 1, 0)) == 1)
+				stat |= 1;
+			if (res == -1)
+				if ((res = update_image(ddf, "/boot/fpga.img", 0x10000, 0xa0000, 1, 0)) == 1)
 					stat |= 1;
 		} else {
-			if ((res = update_image(ddf, "/config/fpga.img", 0x10000, 0xa0000, 1)) == 1)
+			if ((res = update_image(ddf, "/config/fpga.img", 0x10000, 0xa0000, 1, 1)) == 1)
 				stat |= 1;
 			if (res == -1)
-				if ((res = update_image(ddf, "/boot/fpga.img", 0x10000, 0xa0000, 1)) == 1)
+				if ((res = update_image(ddf, "/boot/fpga.img", 0x10000, 0xa0000, 1, 1)) == 1)
+					stat |= 1;
+			if (res == -1)
+				if ((res = update_image(ddf, "/config/fpga_gtl.img", 0x10000, 0xa0000, 1, 1)) == 1)
+					stat |= 1;
+			if (res == -1)
+				if ((res = update_image(ddf, "/boot/fpga_gtl.img", 0x10000, 0xa0000, 1, 1)) == 1)
 					stat |= 1;
 		}
 		break;
 	case 0x320:
 		//fname="/boot/DVBNetV1A_DD01_0300.bit";
 		fname="/boot/fpga.img";
-		if ((res = update_image(ddf, fname, 0x10000, 0x100000, 1)) == 1)
+		if ((res = update_image(ddf, fname, 0x10000, 0x100000, 1, 0)) == 1)
 			stat |= 1;
 		return stat;
 		break;
@@ -789,6 +807,6 @@ int main(int argc, char **argv)
 	if (res < 0)
 		return res;
 	if (res & 1)
-		reboot(60);
+		reboot(40);
 	return res;
 }

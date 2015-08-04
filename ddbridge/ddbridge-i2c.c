@@ -108,12 +108,12 @@ static int i2c_write_reg(struct i2c_adapter *adap, u8 adr,
 static int ddb_i2c_cmd(struct ddb_i2c *i2c, u32 adr, u32 cmd)
 {
 	struct ddb *dev = i2c->dev;
-	int stat;
+	unsigned long stat;
 	u32 val;
 
 	ddbwritel(dev, (adr << 9) | cmd, i2c->regs + I2C_COMMAND);
 	stat = wait_for_completion_timeout(&i2c->completion, HZ);
-	if (stat <= 0) {
+	if (stat == 0) {
 		pr_err("DDBridge I2C timeout, card %d, port %d, link %u\n",
 		       dev->nr, i2c->nr, i2c->link);
 #ifdef CONFIG_PCI_MSI

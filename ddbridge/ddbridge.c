@@ -215,6 +215,11 @@ static int __devinit ddb_probe(struct pci_dev *pdev,
 	ddbwritel(dev, 0, DMA_BASE_READ);
 	if (dev->link[0].info->type != DDB_MOD)
 		ddbwritel(dev, 0, DMA_BASE_WRITE);
+	
+	if (dev->link[0].info->type == DDB_MOD) {
+		if  (ddbreadl(dev, 0x1c) == 4)
+			dev->link[0].info->port_num = 4;
+	}
 
 	/*ddbwritel(dev, 0xffffffff, INTERRUPT_ACK);*/
 	if (dev->msi == 2) {
@@ -452,6 +457,7 @@ static const struct pci_device_id ddb_id_tbl[] __devinitconst = {
 	DDB_ID(DDVID, 0x0003, DDVID, 0x0002, ddb_octopus_le),
 	DDB_ID(DDVID, 0x0003, DDVID, 0x0003, ddb_octopus_oem),
 	DDB_ID(DDVID, 0x0003, DDVID, 0x0010, ddb_octopus_mini),
+	DDB_ID(DDVID, 0x0005, DDVID, 0x0011, ddb_octopus_mini),
 	DDB_ID(DDVID, 0x0003, DDVID, 0x0020, ddb_v6),
 	DDB_ID(DDVID, 0x0003, DDVID, 0x0021, ddb_v6_5),
 	DDB_ID(DDVID, 0x0006, DDVID, 0x0022, ddb_v7),
@@ -463,7 +469,7 @@ static const struct pci_device_id ddb_id_tbl[] __devinitconst = {
 	DDB_ID(DDVID, 0x0007, DDVID, 0x0023, ddb_s2_48),
 	DDB_ID(DDVID, 0x0011, DDVID, 0x0040, ddb_ci),
 	DDB_ID(DDVID, 0x0011, DDVID, 0x0041, ddb_cis),
-	DDB_ID(DDVID, 0x0011, DDVID, 0x0042, ddb_ci),
+	DDB_ID(DDVID, 0x0012, DDVID, 0x0042, ddb_ci),
 	DDB_ID(DDVID, 0x0013, DDVID, 0x0043, ddb_ci_s2_pro),
 	DDB_ID(DDVID, 0x0201, DDVID, 0x0001, ddb_mod),
 	DDB_ID(DDVID, 0x0201, DDVID, 0x0002, ddb_mod),

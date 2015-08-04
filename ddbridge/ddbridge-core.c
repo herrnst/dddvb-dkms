@@ -406,7 +406,7 @@ static void ddb_input_stop(struct ddb_input *input)
 		input->dma->running = 0;
 		spin_unlock_irq(&input->dma->lock);
 	}
-	printk("input_stop %u.%u.%u\n", dev->nr, input->port->lnr, input->nr);
+	//printk("input_stop %u.%u.%u\n", dev->nr, input->port->lnr, input->nr);
 }
 
 static void ddb_input_start(struct ddb_input *input)
@@ -442,7 +442,7 @@ static void ddb_input_start(struct ddb_input *input)
 		input->dma->running = 1;
 		spin_unlock_irq(&input->dma->lock);
 	}
-	printk("input_start %u.%u.%u\n", dev->nr, input->port->lnr, input->nr); 
+	//printk("input_start %u.%u.%u\n", dev->nr, input->port->lnr, input->nr); 
 }
 
 
@@ -1423,9 +1423,9 @@ static int max_set_tone(struct dvb_frontend *fe, fe_sec_tone_mode_t tone)
 	case 1:
 	case 2:
 		if (dvb->tone == SEC_TONE_ON)
-			tuner |= 2;
-		if (dvb->voltage == SEC_VOLTAGE_18)
 			tuner |= 1;
+		if (dvb->voltage == SEC_VOLTAGE_18)
+			tuner |= 2;
 		res = max_set_input_unlocked(fe, tuner);
 		break;
 	}
@@ -1469,9 +1469,9 @@ static int max_set_voltage(struct dvb_frontend *fe, fe_sec_voltage_t voltage)
 		nv = dev->link[port->lnr].lnb.voltages;
 		
 		if (dvb->tone == SEC_TONE_ON)
-			tuner |= 2;
-		if (dvb->voltage == SEC_VOLTAGE_18)
 			tuner |= 1;
+		if (dvb->voltage == SEC_VOLTAGE_18)
+			tuner |= 2;
 		res = max_set_input_unlocked(fe, tuner);
 		
 		if (nv != ov) {
@@ -1479,8 +1479,8 @@ static int max_set_voltage(struct dvb_frontend *fe, fe_sec_voltage_t voltage)
 				lnb_set_voltage(dev, port->lnr, 0, SEC_VOLTAGE_13);
 				if (fmode == 1) {
 					lnb_set_voltage(dev, port->lnr, 0, SEC_VOLTAGE_13);
-					lnb_set_voltage(dev, port->lnr, 1, SEC_VOLTAGE_18);
-					lnb_set_voltage(dev, port->lnr, 2, SEC_VOLTAGE_13);
+					lnb_set_voltage(dev, port->lnr, 1, SEC_VOLTAGE_13);
+					lnb_set_voltage(dev, port->lnr, 2, SEC_VOLTAGE_18);
 					lnb_set_voltage(dev, port->lnr, 3, SEC_VOLTAGE_18);
 				}
 			} else {
@@ -3388,16 +3388,18 @@ static int reg_wait(struct ddb *dev, u32 reg, u32 bit)
 	return 0;
 }
 
-static int flashio(struct ddb *dev, u32 link, u8 *wbuf, u32 wlen, u8 *rbuf, u32 rlen)
+static int flashio(struct ddb *dev, u32 lnr, u8 *wbuf, u32 wlen, u8 *rbuf, u32 rlen)
 {
 	u32 data, shift;
-	u32 tag = DDB_LINK_TAG(link);
+	u32 tag = DDB_LINK_TAG(lnr);
+	struct ddb_link *link = &dev->link[lnr];
 
+	mutex_lock(&link->flash_mutex);
 	if (wlen > 4)
 		ddbwritel(dev, 1, tag | SPI_CONTROL);
 	while (wlen > 4) {
 		/* FIXME: check for big-endian */
-		data = swab32(*(u32 *)wbuf);
+		data = swab32(*(u32 *) wbuf);
 		wbuf += 4;
 		wlen -= 4;
 		ddbwritel(dev, data, tag | SPI_DATA);
@@ -3427,7 +3429,7 @@ static int flashio(struct ddb *dev, u32 link, u8 *wbuf, u32 wlen, u8 *rbuf, u32 
 	
 	if (!rlen) {
 		ddbwritel(dev, 0, tag | SPI_CONTROL);
-		return 0;
+		goto exit;
 	}
 	if (rlen > 4)
 		ddbwritel(dev, 1, tag | SPI_CONTROL);
@@ -3458,8 +3460,11 @@ static int flashio(struct ddb *dev, u32 link, u8 *wbuf, u32 wlen, u8 *rbuf, u32 
 		rbuf++;
 		rlen--;
 	}
+exit:
+	mutex_unlock(&link->flash_mutex);
 	return 0;
 fail:
+	mutex_unlock(&link->flash_mutex);
 	return -1;
 }
 
@@ -3499,6 +3504,7 @@ struct ddb_flashio {
 	__u32 write_len;
 	__u8 *read_buf;
 	__u32 read_len;
+	__u32 link;
 };
 
 struct ddb_gpio {
@@ -3597,13 +3603,15 @@ static long ddb_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			return -EINVAL;
 		if (fio.write_len + fio.read_len > 1028)
 			return -EINVAL;
+		if (fio.link > 3)
+			return -EINVAL;
 
 		wbuf = &dev->iobuf[0];
 		rbuf = wbuf + fio.write_len;
 
 		if (copy_from_user(wbuf, fio.write_buf, fio.write_len))
 			return -EFAULT;
-		res = flashio(dev, 0, wbuf, fio.write_len, rbuf, fio.read_len);
+		res = flashio(dev, fio.link, wbuf, fio.write_len, rbuf, fio.read_len);
 		if (res)
 			return res;
 		if (copy_to_user(fio.read_buf, rbuf, fio.read_len))
@@ -3817,7 +3825,7 @@ static ssize_t i2c_irq_show(struct device *device,
 }
 
 static char *class_name[] = {
-	"NONE", "CI", "TUNER", "LOOP"
+	"NONE", "CI", "TUNER", "LOOP", "MOD"
 };
 
 static char *type_name[] = {
@@ -3892,6 +3900,24 @@ static ssize_t temp_show(struct device *device,
 		temp2 *= 125;
 		return sprintf(buf, "%d %d\n", temp, temp2);
 	}
+	return sprintf(buf, "%d\n", temp);
+}
+
+static ssize_t ctemp_show(struct device *device,
+		struct device_attribute *attr, char *buf)
+{
+	struct ddb *dev = dev_get_drvdata(device);
+	struct i2c_adapter *adap;
+	int temp;
+	u8 tmp[2];
+	int num = attr->attr.name[4] - 0x30;
+
+	adap = &dev->i2c[num].adap;
+	if (!adap)
+		return 0;
+	if (i2c_read_regs(adap, 0x49, 0, tmp, 2) < 0)
+		return sprintf(buf, "no sensor\n");
+	temp = tmp[0] * 1000;
 	return sprintf(buf, "%d\n", temp);
 }
 
@@ -4000,9 +4026,9 @@ static ssize_t snr_show(struct device *device,
 	} else {
 		/* serial number at 0x100-0x11f */
 		if (i2c_read_regs16(&dev->i2c[num].adap,
-				    0x50, 0x100, snr, 32) < 0)
+				    0x57, 0x100, snr, 32) < 0)
 			if (i2c_read_regs16(&dev->i2c[num].adap,
-					    0x57, 0x100, snr, 32) < 0)
+					    0x50, 0x100, snr, 32) < 0)
 				return sprintf(buf, "NO SNR\n");
 		snr[31] = 0; /* in case it is not terminated on EEPROM */
 	}
@@ -4017,6 +4043,7 @@ static ssize_t snr_store(struct device *device, struct device_attribute *attr,
 	int num = attr->attr.name[3] - 0x30;
 	u8 snr[34] = { 0x01, 0x00 };
 
+	return 0; /* NOE: remove completely? */
 	if (count > 31)
 		return -EINVAL;
 	if (dev->port[num].type >= DDB_TUNER_XO2)
@@ -4035,6 +4062,23 @@ static ssize_t bsnr_show(struct device *device,
 
 	ddbridge_flashread(dev, 0, snr, 0x10, 15);
 	snr[15] = 0; /* in case it is not terminated on EEPROM */
+	return sprintf(buf, "%s\n", snr);
+}
+
+static ssize_t bpsnr_show(struct device *device,
+			 struct device_attribute *attr, char *buf)
+{
+	struct ddb *dev = dev_get_drvdata(device);
+	char snr[32];
+	
+	if (!&dev->i2c[0].adap)
+		return 0;
+	
+	if (i2c_read_regs16(&dev->i2c[0].adap,
+			    0x50, 0x0000, snr, 32) < 0 ||
+	    snr[0] == 0xff) 
+		return sprintf(buf, "NO SNR\n");
+	snr[31] = 0; /* in case it is not terminated on EEPROM */
 	return sprintf(buf, "%s\n", snr);
 }
 
@@ -4181,6 +4225,7 @@ static struct device_attribute ddb_attrs[] = {
 #endif
 	__ATTR(redirect, 0664, redirect_show, redirect_store),
 	__ATTR_MRO(snr,  bsnr_show),
+	__ATTR_RO(bpsnr),
 	__ATTR_NULL,
 };
 
@@ -4210,6 +4255,13 @@ static struct device_attribute ddb_attrs_snr[] = {
 	__ATTR(snr1, 0664, snr_show, snr_store),
 	__ATTR(snr2, 0664, snr_show, snr_store),
 	__ATTR(snr3, 0664, snr_show, snr_store),
+};
+
+static struct device_attribute ddb_attrs_ctemp[] = {
+	__ATTR_MRO(temp0, ctemp_show),
+	__ATTR_MRO(temp1, ctemp_show),
+	__ATTR_MRO(temp2, ctemp_show),
+	__ATTR_MRO(temp3, ctemp_show),
 };
 
 static struct device_attribute ddb_attrs_led[] = {
@@ -4259,6 +4311,7 @@ static void ddb_device_attrs_del(struct ddb *dev)
 		if (dev->link[0].info->led_num)
 			device_remove_file(dev->ddb_dev, &ddb_attrs_led[i]);
 		device_remove_file(dev->ddb_dev, &ddb_attrs_snr[i]);
+		device_remove_file(dev->ddb_dev, &ddb_attrs_ctemp[i]);
 	}
 	for (i = 0; ddb_attrs[i].attr.name; i++)
 		device_remove_file(dev->ddb_dev, &ddb_attrs[i]);
@@ -4283,6 +4336,8 @@ static int ddb_device_attrs_add(struct ddb *dev)
 	if (dev->link[0].info->regmap->i2c)
 		for (i = 0; i < dev->link[0].info->regmap->i2c->num; i++) {
 			if (device_create_file(dev->ddb_dev, &ddb_attrs_snr[i]))
+				goto fail;
+			if (device_create_file(dev->ddb_dev, &ddb_attrs_ctemp[i]))
 				goto fail;
 			if (dev->link[0].info->led_num)
 				if (device_create_file(dev->ddb_dev,
@@ -4418,6 +4473,10 @@ static int ddb_gtl_init_link(struct ddb *dev, u32 l)
 	
 	printk("Checking GT link %u: regs = %08x\n", l, regs);
 	
+	spin_lock_init(&link->lock);
+	mutex_init(&link->lnb.lock);
+	mutex_init(&link->flash_mutex);
+
 	if (!(1 & ddbreadl(dev, regs))) {
 		u32 c;
 		
@@ -4432,8 +4491,6 @@ static int ddb_gtl_init_link(struct ddb *dev, u32 l)
 		if (c == 5)
 			return -1;
 	}
-	spin_lock_init(&link->lock);
-	mutex_init(&link->flash_mutex);
 	link->nr = l;
 	link->dev = dev;
 	link->regs = regs;
@@ -4442,8 +4499,9 @@ static int ddb_gtl_init_link(struct ddb *dev, u32 l)
 	if (id == 0x0007dd01) 
 		link->info = &octopus_max_gtl;
 	else {
-		pr_info("DDBridge: Detected GT link but found invalid ID. "
-			"You might have to update (flash) the add-on card first.");
+		pr_info("DDBridge: Detected GT link but found invalid ID %08x. "
+			"You might have to update (flash) the add-on card first.",
+			id);
 		return -1;
 	}
 	
@@ -4511,9 +4569,7 @@ static int ddb_init(struct ddb *dev)
 	}
 
 	mutex_init(&dev->link[0].lnb.lock);
-	mutex_init(&dev->link[1].lnb.lock);
-	mutex_init(&dev->link[2].lnb.lock);
-	mutex_init(&dev->link[3].lnb.lock);
+	mutex_init(&dev->link[0].flash_mutex);
 
 	if (dev->link[0].info->regmap->gtl)
 		ddb_gtl_init(dev);
