@@ -2323,7 +2323,7 @@ static int read_attribute_mem(struct dvb_ca_en50221 *ca,
 			      int slot, int address)
 {
 	struct ddb_ci *ci = ca->data;
-	u32 val, off = (address >> 1) & (CI_BUFFER_SIZE-1);
+	u32 val, off = (address >> 1) & (CI_BUFFER_SIZE - 1);
 
 	if (address > CI_BUFFER_SIZE)
 		return -1;
@@ -4100,7 +4100,7 @@ static ssize_t bpsnr_show(struct device *device,
 	struct ddb *dev = dev_get_drvdata(device);
 	char snr[32];
 	
-	if (!&dev->i2c[0].adap)
+	if (!dev->i2c_num)
 		return 0;
 	
 	if (i2c_read_regs16(&dev->i2c[0].adap,

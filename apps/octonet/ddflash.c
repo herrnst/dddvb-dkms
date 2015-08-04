@@ -35,6 +35,8 @@
 #include <sys/ioctl.h>
 #include <linux/types.h>
 
+#include "flash.h"
+
 static int reboot(uint32_t off)
 {
 	FILE *f;
@@ -52,29 +54,6 @@ static int reboot(uint32_t off)
 	system("/sbin/poweroff");
 	return 0;
 }
-
-#define DDB_MAGIC 'd'
-
-struct ddb_id {
-	__u16 vendor;
-	__u16 device;
-	__u16 subvendor;
-	__u16 subdevice;
-	__u32 hw;
-	__u32 regmap;
-};
-
-struct ddb_flashio {
-	__u8 *write_buf;
-	__u32 write_len;
-	__u8 *read_buf;
-	__u32 read_len;
-	__u32 link;
-};
-
-#define IOCTL_DDB_FLASHIO  _IOWR(DDB_MAGIC, 0x00, struct ddb_flashio)
-#define IOCTL_DDB_ID       _IOR(DDB_MAGIC, 0x03, struct ddb_id)
-
 
 struct ddflash {
 	int fd;
