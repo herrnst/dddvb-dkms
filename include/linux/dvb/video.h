@@ -25,9 +25,7 @@
 #define _UAPI_DVBVIDEO_H_
 
 #include <linux/types.h>
-#ifdef __KERNEL__
-#include <linux/compiler.h>
-#else
+#ifndef __KERNEL__
 #include <stdint.h>
 #include <time.h>
 #endif
@@ -273,4 +271,4 @@ typedef __u16 video_attributes_t;
 #define VIDEO_COMMAND     	   _IOWR('o', 59, struct video_command)
 #define VIDEO_TRY_COMMAND 	   _IOWR('o', 60, struct video_command)
 
-#endif /*_UAPI_DVBVIDEO_H_*/
+#endif /* _UAPI_DVBVIDEO_H_ */

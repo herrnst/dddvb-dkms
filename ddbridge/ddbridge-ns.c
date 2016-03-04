@@ -17,6 +17,21 @@ static u16 calc_pcs(struct dvb_ns_params *p)
 	return pcs;
 }
 
+static u16 calc_pcs16(struct dvb_ns_params *p, int ipv)
+{
+	u32 sum = 0, i;
+	u16 pcs;
+
+	for (i = 0; i < ipv ? 16 : 4; i += 2) {
+		sum += (p->sip[i] << 8) | p->sip[i + 1];
+		sum += (p->dip[i] << 8) | p->dip[i + 1];
+	}
+	sum += 0x11; /* UDP proto */
+	sum = (sum >> 16) + (sum & 0xffff);
+	pcs = sum;
+	return pcs;
+}
+
 /******************************************************************************/
 /******************************************************************************/
 /******************************************************************************/
@@ -56,36 +71,6 @@ static int ns_alloc(struct dvbnss *nss)
 	return ret;
 }
 
-static int ns_set_pid(struct dvbnss *nss, u16 pid)
-{
-	struct dvb_netstream *ns = nss->ns;
-	struct ddb_input *input = ns->priv;
-	struct ddb *dev = input->port->dev;
-	struct ddb_ns *dns = (struct ddb_ns *) nss->priv;
-	u16 byte = (pid & 0x1fff) >> 3;
-	u8 bit = 1 << (pid & 7);
-	u32 off = STREAM_PIDS(dns->nr);
-	
-	//printk("ns_set_pid %04x\n", pid);
-#if 1
-	if (pid & 0x2000) {
-		if (pid & 0x8000) 
-			ddbmemset(dev, off, 0xff, 0x400);
-		else
-			ddbmemset(dev, off, 0x00, 0x400);
-	} else {
-		u8 val = ddbreadb(dev, off + byte);
-		if (pid & 0x8000) 
-			ddbwriteb(dev, val | bit, off + byte);
-		else
-			ddbwriteb(dev, val & ~bit, off + byte);
-	}
-#else
-	ddbcpyto(dev, STREAM_PIDS(dns->nr), nss->pids, 0x400);
-#endif
-	return 0;
-}
-
 static int ns_set_pids(struct dvbnss *nss)
 {
 	struct dvb_netstream *ns = nss->ns;
@@ -103,12 +88,74 @@ static int ns_set_pids(struct dvbnss *nss)
 		ddbwritel(dev, sys, PID_FILTER_SYSTEM_PIDS(dns->nr));
 		for (pid = 20; j < 5 && pid < 8192; pid++) 
 			if (nss->pids[pid >> 3] & (1 << (pid & 7))) {
-				ddbwritel(dev, pid, PID_FILTER_PID(dns->nr, j)); 
+				ddbwritel(dev, 0x8000 | pid, PID_FILTER_PID(dns->nr, j)); 
 				j++;
 			}
+		/* disable unused pids */
+		for (; j < 5; j++)
+			ddbwritel(dev, 0, PID_FILTER_PID(dns->nr, j));
 	} else 
 		ddbcpyto(dev, STREAM_PIDS(dns->nr), nss->pids, 0x400);
 	return 0;
+}
+
+static int ns_set_pid(struct dvbnss *nss, u16 pid)
+{
+	struct dvb_netstream *ns = nss->ns;
+	struct ddb_input *input = ns->priv;
+	struct ddb *dev = input->port->dev;
+	struct ddb_ns *dns = (struct ddb_ns *) nss->priv;
+	u16 byte = (pid & 0x1fff) >> 3;
+	u8 bit = 1 << (pid & 7);
+	u32 off = STREAM_PIDS(dns->nr);
+	
+#if 1
+	if (dev->devid == 0x0301dd01) {
+		if (pid & 0x2000) {
+			if (pid & 0x8000)
+				memset(nss->pids, 0xff, 0x400);
+			else
+				memset(nss->pids, 0x00, 0x400);
+		} else {
+			if (pid & 0x8000)
+				nss->pids[byte] |= bit;
+			else
+				nss->pids[byte] &= ~bit;
+		}
+		ns_set_pids(nss);
+	} else {
+		if (pid & 0x2000) {
+			if (pid & 0x8000) 
+				ddbmemset(dev, off, 0xff, 0x400);
+			else
+				ddbmemset(dev, off, 0x00, 0x400);
+		} else {
+			u8 val = ddbreadb(dev, off + byte);
+			if (pid & 0x8000) 
+				ddbwriteb(dev, val | bit, off + byte);
+			else
+				ddbwriteb(dev, val & ~bit, off + byte);
+		}
+	}
+#else
+	ddbcpyto(dev, STREAM_PIDS(dns->nr), nss->pids, 0x400);
+#endif
+	return 0;
+}
+
+static int citoport(struct ddb *dev, u8 ci)
+{
+	int i, j;
+	struct ddb_input *input;
+
+	for (i = j = 0; i < dev->info->port_num; i++) {
+		if (dev->port[i].class == DDB_PORT_CI) {
+			if (j == ci)
+				return i;
+			j++; 
+		}
+	}
+	return -1;
 }
 
 static int ns_set_ci(struct dvbnss *nss, u8 ci)
@@ -117,15 +164,20 @@ static int ns_set_ci(struct dvbnss *nss, u8 ci)
 	struct ddb_input *input = ns->priv;
 	struct ddb *dev = input->port->dev;
 	struct ddb_ns *dns = (struct ddb_ns *) nss->priv;
+	int ciport;
 
 	if (ci == 255) {
 		dns->fe = input->nr;
 		return 0;
 	}
-	ddbwritel(dev, (input->nr << 16) | 0x1c, TS_OUTPUT_CONTROL(ci));
+	ciport = citoport(dev, ci);
+	if (ciport < 0)
+		return -EINVAL;
+	printk("input %d to ci %d at port %d\n", input->nr, ci, ciport);
+	ddbwritel(dev, (input->nr << 16) | 0x1c, TS_OUTPUT_CONTROL(ciport));
         usleep_range(1, 5);
-        ddbwritel(dev, (input->nr << 16) | 0x1d, TS_OUTPUT_CONTROL(ci));        
-	dns->fe = ci * 2;
+        ddbwritel(dev, (input->nr << 16) | 0x1d, TS_OUTPUT_CONTROL(ciport));        
+	dns->fe = ciport * 2;
 	return 0;
 }
 
@@ -226,13 +278,33 @@ static u32 set_nsbuf(struct dvb_ns_params *p, u8 *buf, u32 *udplen, int rtcp)
 
 	/* IP header */
 	if (p->flags & DVB_NS_IPV6) {
+		u8 ip6head[8]  = { 0x65, 0x00, 0x00, 0x00,
+				    0x00, 0x00, 0x11, 0x00, };
+		memcpy(buf + c, ip6head, sizeof(ip6head));
+		buf[c + 7] = p->ttl;
+		memcpy(buf + c +  8, p->sip, 16);
+		memcpy(buf + c + 24, p->dip, 16);
+		c += 40;
+
+		/* UDP */
+		buf[c + 0] = sport >> 8;
+		buf[c + 1] = sport & 0xff;
+		buf[c + 2] = dport >> 8;
+		buf[c + 3] = dport & 0xff;
+		buf[c + 4] = 0; /* length */
+		buf[c + 5] = 0;
+		pcs = calc_pcs16(p, p->flags & DVB_NS_IPV6);
+		buf[c + 6] = pcs >> 8;
+		buf[c + 7] = pcs & 0xff;
+		c += 8;
+		*udplen = 8;
 		
 	} else {
-		u8 ip4head[]  = { 0x45, 0x00, 0x00, 0x00, 0x00, 0x00,
-				  0x40, 0x00, 0x40, 0x11, 0x00, 0x00 };
+		u8 ip4head[12]  = { 0x45, 0x00, 0x00, 0x00, 0x00, 0x00,
+				    0x40, 0x00, 0x40, 0x11, 0x00, 0x00 };
 
 		memcpy(buf + c, ip4head, sizeof(ip4head));
-		buf[8] = p->ttl;
+		buf[c + 8] = p->ttl;
 		memcpy(buf + c + 12, p->sip, 4);
 		memcpy(buf + c + 16, p->dip, 4);
 		c += 20;
@@ -311,23 +383,15 @@ static int ns_set_net(struct dvbnss *nss)
 	struct ddb_ns *dns = (struct ddb_ns *) nss->priv;
 	u32 off = STREAM_PACKET_ADR(dns->nr);
 	u32 coff = 96;
-	u32 udplen;
 
-	dns->ts_offset = set_nsbuf(p, dns->p, &udplen, 0);
+	dns->ts_offset = set_nsbuf(p, dns->p, &dns->udplen, 0);
+	if (nss->params.flags & DVB_NS_RTCP) 
+		dns->rtcp_len = set_nsbuf(p, dns->p + coff, &dns->rtcp_udplen, 1);
 	ddbcpyto(dev, off, dns->p, sizeof(dns->p));
-	ddbwritel(dev, udplen | (STREAM_PACKET_OFF(dns->nr) << 16),
+	ddbwritel(dev, dns->udplen | (STREAM_PACKET_OFF(dns->nr) << 16),
 		  STREAM_RTP_PACKET(dns->nr));
-	
-	if (nss->params.flags & DVB_NS_RTCP) {
-		dns->rtcp_len = set_nsbuf(p, dns->p + coff, &udplen, 1);
-		dns->rtcp_udplen = udplen;
-		//printk("rtcp_len = %d\n", dns->rtcp_len); 
-		//printk("udp_len = %d\n", udplen);
-		
-		ddbcpyto(dev, off, dns->p, sizeof(dns->p));
-		ddbwritel(dev, udplen | ((STREAM_PACKET_OFF(dns->nr) + coff) << 16),
-			  STREAM_RTCP_PACKET(dns->nr));
-	}
+	ddbwritel(dev, dns->rtcp_udplen | ((STREAM_PACKET_OFF(dns->nr) + coff) << 16),
+		  STREAM_RTCP_PACKET(dns->nr));
 	return 0;
 }
 

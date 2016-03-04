@@ -1,6 +1,27 @@
-/* Copyright 2013 Digital Devices GmbH, All Rights reserved */
-/* Support for Sony CXD2843ER  DVB-T/T2/C/C2 Demodulator.
-   Also supports the CXD2837ER DVB-T/T2/C and CXD2838ER ISDB-T demodulator */
+/*
+ * Driver for the Sony CXD2843ER DVB-T/T2/C/C2 demodulator.
+ * Also supports the CXD2837ER DVB-T/T2/C and the
+ * CXD2838ER ISDB-T demodulator.
+ *
+ * Copyright (C) 2013 Digital Devices GmbH
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * version 2 only, as published by the Free Software Foundation.
+ *
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA
+ * Or, point your browser to http://www.gnu.org/copyleft/gpl.html
+ */
 
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -16,22 +37,6 @@
 #include "dvb_frontend.h"
 #include "cxd2843.h"
 
-
-#define SONY_DVBC_WAIT_DEMOD_LOCK           1000
-
-#define SONY_DVBT_WAIT_DEMOD_LOCK           1000    /**< 1s timeout for wait demodulator lock process for DVB-T channels */
-#define SONY_DVBT_WAIT_TS_LOCK              1000    /**< 1s timeoutm for wait TS lock process for DVB-T channels */
-#define SONY_DVBT2_BASE_WAIT_DEMOD_LOCK     3500    /**< 3.5s timeout for wait demodulator lock process for DVB-T2-Base channels */
-#define SONY_DVBT2_BASE_WAIT_TS_LOCK        1500    /**< 1.5s timeout for wait TS lock process for DVB-T2-Base channels */
-#define SONY_DVBT2_LITE_WAIT_DEMOD_LOCK     5000    /**< 5.0s timeout for wait demodulator lock process for DVB-T2-Lite channels */
-#define SONY_DVBT2_LITE_WAIT_TS_LOCK        2300    /**< 2.3s timeout for wait TS lock process for DVB-T2-Lite channels */
-#define SONY_DVBT_T2_WAIT_LOCK_INTERVAL     10      /**< 10ms polling interval for demodulator and TS lock functions */
-#define SONY_DVBT2_L1POST_TIMEOUT           300     /**< 300ms timeout for L1Post Valid loop */
-
-#define SONY_ISDBT_WAIT_DEMOD_LOCK          1500    /**< 1.5s timeout for wait demodulator lock process for ISDB-T channels */
-#define SONY_ISDBT_WAIT_TS_LOCK             1500    /**< 1.5s timeout for wait TS lock process for ISDB-T channels */
-
-#define SONY_DEMOD_DVBC2_WAIT_DEMOD_LOCK            2000
 
 enum EDemodType { CXD2843, CXD2837, CXD2838 };
 enum EDemodState { Unknown, Shutdown, Sleep, ActiveT, ActiveT2, ActiveC, ActiveC2, ActiveIT };
@@ -901,7 +906,9 @@ static void C2_DemodSetting2(struct cxd_state *state)
 		TunePosition = (TunePosition * 448) / 1000;
         }
         TunePosition = ((TunePosition + 6) / 12) * 12;
-	
+
+	printk("TunePosition = %u\n", TunePosition);
+
         data[0] = ( (TunePosition >> 16) & 0xFF );
         data[1] = ( (TunePosition >>  8) & 0xFF );
         data[2] = ( (TunePosition      ) & 0xFF );
@@ -1062,33 +1069,6 @@ static int Start(struct cxd_state *state, u32 IntermediateFrequency)
 	writeregt(state, 0x00, 0xFE, 0x01);   // SW Reset
 	writeregt(state, 0x00, 0xC3, 0x00);   // Enable TS Output
 	
-	// Set Lock timeout values
-	
-	switch (state->state) {
-	case ActiveT:  
-		state->LockTimeout   = SONY_DVBT_WAIT_DEMOD_LOCK;
-		state->TSLockTimeout = SONY_DVBT_WAIT_TS_LOCK;
-		break;
-	case ActiveT2: 
-		state->LockTimeout   = SONY_DVBT2_BASE_WAIT_DEMOD_LOCK;
-		state->TSLockTimeout = SONY_DVBT2_BASE_WAIT_TS_LOCK;
-		//state->LockTimeout   = SONY_DVBT2_LITE_WAIT_DEMOD_LOCK;
-		//state->TSLockTimeout = SONY_DVBT2_LITE_WAIT_TS_LOCK;
-		state->L1PostTimeout = SONY_DVBT2_L1POST_TIMEOUT;
-		break;
-	case ActiveC:  
-		state->LockTimeout   = SONY_DVBC_WAIT_DEMOD_LOCK;
-		break;
-	case ActiveC2: 
-		state->LockTimeout   = SONY_DEMOD_DVBC2_WAIT_DEMOD_LOCK;
-		break;
-	case ActiveIT: 
-		state->LockTimeout   = SONY_ISDBT_WAIT_DEMOD_LOCK;
-		state->TSLockTimeout = SONY_ISDBT_WAIT_TS_LOCK;
-		break;
-	default:
-		break;
-	}
 	return 0;
 }
 
@@ -1101,11 +1081,6 @@ static int set_parameters(struct dvb_frontend *fe)
 	switch (fe->dtv_property_cache.delivery_system) {
 	case SYS_DVBC_ANNEX_A:
 		state->omode = OM_DVBC;
-		/* symbol rate 0 might cause an oops */
-		if (fe->dtv_property_cache.symbol_rate == 0) {
-			printk(KERN_ERR "cxd2843: Invalid symbol rate\n");
-			return -EINVAL;
-		}
 		break;
 	case SYS_DVBC2:
 		state->omode = OM_DVBC2;
@@ -1125,10 +1100,10 @@ static int set_parameters(struct dvb_frontend *fe)
 	if (fe->ops.tuner_ops.set_params)
 		fe->ops.tuner_ops.set_params(fe);
 	state->bandwidth = fe->dtv_property_cache.bandwidth_hz;
-	state->bw = state->bandwidth / 1000000;
+	state->bw = (fe->dtv_property_cache.bandwidth_hz + 999999) / 1000000;
+	state->DataSliceID = 0;//fe->dtv_property_cache.slice_id;
+	state->PLPNumber = fe->dtv_property_cache.stream_id;
 	fe->ops.tuner_ops.get_if_frequency(fe, &IF);
-	printk("bw = %u\n", state->bw);
-	printk("IF = %u\n", IF);
 	stat = Start(state, IF);
 	return stat;
 }

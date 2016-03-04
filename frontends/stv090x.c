@@ -36,7 +36,7 @@
 #include "stv090x.h"
 #include "stv090x_priv.h"
 
-#define ERRCTRL1_DVBS1 0x76
+ #define ERRCTRL1_DVBS1 0x76
 #define ERRCTRL1_DVBS2 0x67
 
 static unsigned int verbose;
@@ -782,12 +782,14 @@ static int stv090x_i2c_gate_ctrl(struct stv090x_state *state, int enable)
 	if (enable) {
 		dprintk(FE_DEBUG, 1, "Enable Gate");
 		STV090x_SETFIELD_Px(reg, I2CT_ON_FIELD, 1);
+		reg = 0xc8;
 		if (STV090x_WRITE_DEMOD(state, I2CRPT, reg) < 0)
 			goto err;
 
 	} else {
 		dprintk(FE_DEBUG, 1, "Disable Gate");
 		STV090x_SETFIELD_Px(reg, I2CT_ON_FIELD, 0);
+		reg = 0x4a;
 		if ((STV090x_WRITE_DEMOD(state, I2CRPT, reg)) < 0)
 			goto err;
 	}
@@ -4571,6 +4573,9 @@ static int stv090x_set_tspath(struct stv090x_state *state)
 			goto err;
 	}
 
+
+	printk("TSCFGH resets\n");
+
 	reg = stv090x_read_reg(state, STV090x_P2_TSCFGH);
 	STV090x_SETFIELD_Px(reg, RST_HWARE_FIELD, 0x01);
 	if (stv090x_write_reg(state, STV090x_P2_TSCFGH, reg) < 0)
@@ -4655,9 +4660,10 @@ static int stv090x_init(struct dvb_frontend *fe)
 	if (stv090x_i2c_gate_ctrl(state, 0) < 0)
 		goto err;
 
+#if 0
 	if (stv090x_set_tspath(state) < 0)
 		goto err;
-
+#endif
 	return 0;
 
 err_gateoff:
@@ -4771,6 +4777,9 @@ static int stv090x_setup(struct dvb_frontend *fe)
 	if (stv090x_write_reg(state, STV090x_TSTRES0, 0x80) < 0)
 		goto err;
 	if (stv090x_write_reg(state, STV090x_TSTRES0, 0x00) < 0)
+		goto err;
+
+	if (stv090x_set_tspath(state) < 0)
 		goto err;
 
 	return 0;

@@ -23,7 +23,7 @@ The FPGA is also connected to one of the ports of the gigabit switch.
 There are up to 12 channels. Each channel can select one input TS, which is then passed through
 a PID filter (8192 bit array) and sent to the switch as a UDP/RTP stream.
 
-The G45 is connected to another port of the switch (but only as 100 MBit)
+The G45 is connected to another port of the switch (but only with 100 MBit)
 
 
 Booting:

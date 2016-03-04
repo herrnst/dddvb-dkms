@@ -127,10 +127,10 @@ static int __devinit ddb_probe(struct pci_dev *pdev,
 	}
 
 	dev->hwid = ddbreadl(dev, 0);
-	dev->regmap = ddbreadl(dev, 4);
+	dev->regmapid = ddbreadl(dev, 4);
 	
 	printk(KERN_INFO "HW %08x REGMAP %08x\n",
-	       dev->hwid, dev->regmap);
+	       dev->hwid, dev->regmapid);
 	
 	ddbwritel(dev, 0x00000000, INTERRUPT_ENABLE);
 	ddbwritel(dev, 0x00000000, MSI1_ENABLE);
@@ -247,9 +247,20 @@ fail:
 /******************************************************************************/
 /******************************************************************************/
 
+struct ddb_regset octopus_i2c = {
+	.base = 0x80,
+	.num  = 0x04,
+	.size = 0x20,
+};
+
+static struct ddb_regmap octopus_map = {
+//	.i2c = octopus_i2c,
+};
+
 static struct ddb_info ddb_none = {
 	.type     = DDB_NONE,
-	.name     = "unknown Digital Devices PCIe card, get newer driver",
+	.name     = "unknown Digital Devices PCIe card, install newer driver",
+//	.regmap   = octopus_map,
 };
 
 static struct ddb_info ddb_octopus = {

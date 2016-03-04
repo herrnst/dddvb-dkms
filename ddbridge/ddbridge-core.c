@@ -282,7 +282,6 @@ static void ddb_buffers_free(struct ddb *dev)
 	}
 }
 
-
 static void ddb_output_start(struct ddb_output *output)
 {
 	struct ddb *dev = output->port->dev;
@@ -411,7 +410,6 @@ static int ddb_dvb_input_stop(struct ddb_input *input)
 	ddb_input_stop(input);
 	return 0;
 }
-
 
 static void ddb_input_start_all(struct ddb_input *input)
 {
@@ -1394,7 +1392,6 @@ static void dvb_unregister_adapters(struct ddb *dev)
 	}
 }
 
-
 static int dvb_input_attach(struct ddb_input *input)
 {
 	int ret = 0;
@@ -1528,7 +1525,7 @@ static int port_has_mach(struct ddb_port *port, u8 *id)
 	u8 probe[1] = { 0x00 }, data[4]; 
 	struct i2c_msg msgs[2] = {{ .addr = 0x10,  .flags = 0,
 				    .buf  = probe, .len   = 1 },
-				  { .addr = 0x40,  .flags = I2C_M_RD,
+				  { .addr = 0x10,  .flags = I2C_M_RD,
 				    .buf  = data,  .len   = 4 }};
 	val = i2c_transfer(&port->i2c->adap, msgs, 2);
 	if (val != 2)
@@ -1582,7 +1579,7 @@ static int port_has_stv0367(struct ddb_port *port)
 	return 1;
 }
 
-static int init_xo2(struct ddb_port *port)
+static int init_xo2_old(struct ddb_port *port)
 {
 	struct i2c_adapter *i2c =&port->i2c->adap;
 	u8 val;
@@ -1611,6 +1608,39 @@ static int init_xo2(struct ddb_port *port)
         /* Release demod resets */
 	i2c_write_reg(i2c, 0x10, 0x08, 0x07); 
 	msleep(2);
+        /* Start XO2 PLL */
+	i2c_write_reg(i2c, 0x10, 0x08, 0x87); 
+
+	return 0;
+}
+
+static int init_xo2(struct ddb_port *port)
+{
+	struct i2c_adapter *i2c =&port->i2c->adap;
+	u8 val, data[2];
+	int res;
+	
+	res = i2c_read_regs(i2c, 0x10, 0x04, data, 2);
+	if (res < 0)
+		return res;
+
+	if (data[0] != 0x01)  {
+		printk(KERN_INFO "Port %d: invalid XO2\n", port->nr);
+		return -1;
+	}
+
+	i2c_read_reg(i2c, 0x10, 0x08, &val);
+	if (val != 0) {
+		i2c_write_reg(i2c, 0x10, 0x08, 0x00); 
+		msleep(100);
+	}
+        /* Enable tuner power, disable pll, reset demods */
+	i2c_write_reg(i2c, 0x10, 0x08, 0x04); 
+	msleep(2);
+        /* Release demod resets */
+	i2c_write_reg(i2c, 0x10, 0x08, 0x07); 
+	msleep(2);
+
         /* Start XO2 PLL */
 	i2c_write_reg(i2c, 0x10, 0x08, 0x87); 
 
@@ -2404,13 +2434,13 @@ static int nsd_do_ioctl(struct file *file, unsigned int cmd, void *parg)
 	int ret = 0;
 
 	switch (cmd) {
-	case NSD_GET_TS:
+	case NSD_START_GET_TS:
 	{
 		struct dvb_nsd_ts *ts = parg;
-		u32 ctrl = (ts->input & 7) << 8, to;
+		u32 ctrl = ((ts->input & 7) << 8) | (ts->filter_mask << 2);
+		u32 to;
 		int i;
 		
-		printk("%s\n", __func__);
 		if (ddbreadl(dev, TS_CAPTURE_CONTROL) & 1) {
 			printk("ts capture busy\n");
 			return -EBUSY;
@@ -2419,13 +2449,13 @@ static int nsd_do_ioctl(struct file *file, unsigned int cmd, void *parg)
 
 		ddbwritel(dev, ctrl, TS_CAPTURE_CONTROL);
 		ddbwritel(dev, ts->pid, TS_CAPTURE_PID);
-		ddbwritel(dev, (ts->table << 8) | ts->section, 
+		ddbwritel(dev, (ts->section_id << 16) | (ts->table << 8) | ts->section,
 			  TS_CAPTURE_TABLESECTION);
 		/* 1024 ms default timeout if timeout set to 0 */
 		if (ts->timeout)
 			to = ts->timeout;
 		else
-			to = 1024;//ts->timeout;
+			to = 1024;
 		/* 21 packets default if num set to 0 */
 		if (ts->num)
 			to |= ((u32) ts->num << 16);
@@ -2436,16 +2466,17 @@ static int nsd_do_ioctl(struct file *file, unsigned int cmd, void *parg)
 			ctrl |= 2;
 		ddbwritel(dev, ctrl | 1, TS_CAPTURE_CONTROL);
 
+#if 0
 		for (i = 0; i < (ts->timeout / 100); i++) {
 			if (ddbreadl(dev, TS_CAPTURE_CONTROL) & 1)
 				msleep(100);
 			else
 				break;
 		}
-		printk("ts capture done %d\n", i);
+		//printk("ts capture done %d\n", i);
 		if ((ddbreadl(dev, TS_CAPTURE_CONTROL) & 1) ||
 		    (ddbreadl(dev, TS_CAPTURE_CONTROL) & (1 << 14))) {
-			printk("ts capture timeout\n");
+			//printk("ts capture timeout\n");
 			ddb_dvb_input_stop(&dev->input[ts->input & 7]);
 			return -EAGAIN;
 		}
@@ -2455,8 +2486,47 @@ static int nsd_do_ioctl(struct file *file, unsigned int cmd, void *parg)
 		ret = copy_to_user(ts->ts, dev->tsbuf, ts->len);
 		if (ret < 0)
 			return ret;
+#endif
 		break;
 	}
+	case NSD_POLL_GET_TS:
+	{
+		struct dvb_nsd_ts *ts = parg;
+		u32 ctrl = ddbreadl(dev, TS_CAPTURE_CONTROL);
+
+		if (ctrl & 1) {
+			return -EBUSY;
+		}
+		if (ctrl & (1 << 14)) {
+			//printk("ts capture timeout\n");
+			return -EAGAIN;
+		}
+		ddbcpyfrom(dev, dev->tsbuf, TS_CAPTURE_MEMORY, TS_CAPTURE_LEN);
+		ts->len = ddbreadl(dev, TS_CAPTURE_RECEIVED) & 0xfff;
+		if (copy_to_user(ts->ts, dev->tsbuf, ts->len) < 0)
+			return -EIO;
+		break;
+	}
+	case NSD_CANCEL_GET_TS:
+	{
+		u32 ctrl = 0;
+		printk("cancel ts capture: 0x%x\n", ctrl);
+		ddbwritel(dev, ctrl, TS_CAPTURE_CONTROL);
+		ctrl = ddbreadl(dev, TS_CAPTURE_CONTROL);
+		//printk("control register is 0x%x\n", ctrl);
+		break;
+	}
+	case NSD_STOP_GET_TS:
+	{
+		struct dvb_nsd_ts *ts = parg;
+		if (ddbreadl(dev, TS_CAPTURE_CONTROL) & 1) {
+			printk("cannot stop ts capture, while it was neither finished not canceled\n");
+			return -EBUSY;
+		}
+		//printk("ts capture stopped\n");
+		ddb_dvb_input_stop(&dev->input[ts->input & 7]);
+ 		break;
+ 	}
 	default:
 		ret = -EINVAL;
 		break;
@@ -2591,6 +2661,25 @@ int ddbridge_flashread(struct ddb *dev, u8 *buf, u32 addr, u32 len)
 	return flashio(dev, cmd, 4, buf, len);
 }
 
+static int mdio_write(struct ddb *dev, u8 adr, u8 reg, u16 val)
+{
+	ddbwritel(dev, adr, MDIO_ADR);
+	ddbwritel(dev, reg, MDIO_REG);
+	ddbwritel(dev, val, MDIO_VAL);
+	ddbwritel(dev, 0x03, MDIO_CTRL);
+	while (ddbreadl(dev, MDIO_CTRL) & 0x02);
+	return 0;
+}
+
+static u16 mdio_read(struct ddb *dev, u8 adr, u8 reg)
+{
+	ddbwritel(dev, adr, MDIO_ADR);
+	ddbwritel(dev, reg, MDIO_REG);
+	ddbwritel(dev, 0x07, MDIO_CTRL);
+	while (ddbreadl(dev, MDIO_CTRL) & 0x02);
+	return ddbreadl(dev, MDIO_VAL);
+}
+
 #define DDB_MAGIC 'd'
 
 struct ddb_flashio {
@@ -2625,14 +2714,22 @@ struct ddb_mem {
 	__u32  len;
 };
 
-#define IOCTL_DDB_FLASHIO   _IOWR(DDB_MAGIC, 0x00, struct ddb_flashio)
-#define IOCTL_DDB_GPIO_IN   _IOWR(DDB_MAGIC, 0x01, struct ddb_gpio)
-#define IOCTL_DDB_GPIO_OUT  _IOWR(DDB_MAGIC, 0x02, struct ddb_gpio)
-#define IOCTL_DDB_ID        _IOR(DDB_MAGIC, 0x03, struct ddb_id)
-#define IOCTL_DDB_READ_REG  _IOWR(DDB_MAGIC, 0x04, struct ddb_reg)
-#define IOCTL_DDB_WRITE_REG _IOW(DDB_MAGIC, 0x05, struct ddb_reg)
-#define IOCTL_DDB_READ_MEM  _IOWR(DDB_MAGIC, 0x06, struct ddb_mem)
-#define IOCTL_DDB_WRITE_MEM _IOR(DDB_MAGIC, 0x07, struct ddb_mem)
+struct ddb_mdio {
+	__u8   adr;
+	__u8   reg;
+	__u16  val;
+};
+
+#define IOCTL_DDB_FLASHIO    _IOWR(DDB_MAGIC, 0x00, struct ddb_flashio)
+#define IOCTL_DDB_GPIO_IN    _IOWR(DDB_MAGIC, 0x01, struct ddb_gpio)
+#define IOCTL_DDB_GPIO_OUT   _IOWR(DDB_MAGIC, 0x02, struct ddb_gpio)
+#define IOCTL_DDB_ID         _IOR(DDB_MAGIC, 0x03, struct ddb_id)
+#define IOCTL_DDB_READ_REG   _IOWR(DDB_MAGIC, 0x04, struct ddb_reg)
+#define IOCTL_DDB_WRITE_REG  _IOW(DDB_MAGIC, 0x05, struct ddb_reg)
+#define IOCTL_DDB_READ_MEM   _IOWR(DDB_MAGIC, 0x06, struct ddb_mem)
+#define IOCTL_DDB_WRITE_MEM  _IOR(DDB_MAGIC, 0x07, struct ddb_mem)
+#define IOCTL_DDB_READ_MDIO  _IOWR(DDB_MAGIC, 0x08, struct ddb_mdio)
+#define IOCTL_DDB_WRITE_MDIO _IOR(DDB_MAGIC, 0x09, struct ddb_mdio)
 
 #define DDB_NAME "ddbridge"
 
@@ -2640,10 +2737,21 @@ static u32 ddb_num;
 static int ddb_major;
 static DEFINE_MUTEX(ddb_mutex);
 
+static int ddb_release(struct inode *inode, struct file *file)
+{
+	struct ddb *dev = file->private_data;
+	
+	dev->ddb_dev_users--;
+	return 0;
+}
+
 static int ddb_open(struct inode *inode, struct file *file)
 {
 	struct ddb *dev = ddbs[iminor(inode)];
 
+	if (dev->ddb_dev_users)
+		return -EBUSY;
+	dev->ddb_dev_users++;
 	file->private_data = dev;
 	return 0;
 }
@@ -2727,6 +2835,26 @@ static long ddb_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		ddbwritel(dev, reg.val, reg.reg);
 		break;
 	}
+	case IOCTL_DDB_READ_MDIO:
+	{
+		struct ddb_mdio mdio;
+		
+		if (copy_from_user(&mdio, parg, sizeof(mdio))) 
+			return -EFAULT;
+		mdio.val = mdio_read(dev, mdio.adr, mdio.reg);
+		if (copy_to_user(parg, &mdio, sizeof(mdio))) 
+			return -EFAULT;
+		break;
+	}
+	case IOCTL_DDB_WRITE_MDIO:
+	{
+		struct ddb_mdio mdio;
+		
+		if (copy_from_user(&mdio, parg, sizeof(mdio))) 
+			return -EFAULT;
+		mdio_write(dev, mdio.adr, mdio.reg, mdio.val);
+		break;
+	}
 	case IOCTL_DDB_READ_MEM:
 	{
 		struct ddb_mem mem;
@@ -2766,6 +2894,7 @@ static long ddb_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 static const struct file_operations ddb_fops = {
 	.unlocked_ioctl = ddb_ioctl,
 	.open           = ddb_open,
+	.release        = ddb_release,
 };
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3,4,0))
@@ -3052,7 +3181,7 @@ static ssize_t regmap_show(struct device *device,
 {
 	struct ddb *dev = dev_get_drvdata(device);
 	
-	return sprintf(buf, "0x%08X\n", dev->regmap);
+	return sprintf(buf, "0x%08X\n", dev->regmapid);
 }
 
 static struct device_attribute ddb_attrs[] = {

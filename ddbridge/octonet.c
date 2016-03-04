@@ -40,6 +40,8 @@ static int adapter_alloc = 3;
 module_param(adapter_alloc, int, 0444);
 MODULE_PARM_DESC(adapter_alloc, "0-one adapter per io, 1-one per tab with io, 2-one per tab, 3-one for all");
 
+#define DVB_NETSTREAM
+
 #include "ddbridge-core.c"
 
 static struct ddb_info ddb_octonet = {
@@ -99,11 +101,11 @@ static int __init octonet_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	dev->hwid = ddbreadl(dev, 0);
-	dev->regmap = ddbreadl(dev, 4);
+	dev->regmapid = ddbreadl(dev, 4);
 	dev->devid = ddbreadl(dev, 8);
 	dev->mac = ddbreadl(dev, 12);
 	
-	printk(KERN_INFO "HW  %08x REGMAP %08x\n", dev->hwid, dev->regmap);
+	printk(KERN_INFO "HW  %08x REGMAP %08x\n", dev->hwid, dev->regmapid);
 	printk(KERN_INFO "MAC %08x DEVID  %08x\n", dev->mac, dev->devid);
 	
 	ddbwritel(dev, 0x00000000, INTERRUPT_ENABLE);

@@ -44,6 +44,14 @@
 #define GPIO_DIRECTION   0x28
 
 /* ------------------------------------------------------------------------- */
+/* MDIO */
+
+#define MDIO_CTRL        0x20
+#define MDIO_ADR         0x24
+#define MDIO_REG         0x28
+#define MDIO_VAL         0x2C
+
+/* ------------------------------------------------------------------------- */
 
 /* Interrupt controller
 // How many MSI's are available depends on HW (Min 2 max 8)
@@ -129,13 +137,7 @@
 #define I2C_TIMING      (0x04)
 #define I2C_TASKLENGTH  (0x08)     /* High read, low write */
 #define I2C_TASKADDRESS (0x0C)     /* High read, low write */
-
 #define I2C_MONITOR     (0x1C)
-
-#define I2C_BASE_1      (I2C_BASE + 0x00)
-#define I2C_BASE_2      (I2C_BASE + 0x20)
-#define I2C_BASE_3      (I2C_BASE + 0x40)
-#define I2C_BASE_4      (I2C_BASE + 0x60)
 
 #define I2C_BASE_N(i)   (I2C_BASE + (i) * 0x20)
 
@@ -365,6 +367,7 @@
 
 #define RTP_MASTER_BASE      (0x120)
 #define RTP_MASTER_CONTROL          (RTP_MASTER_BASE + 0x00) 
+#define RTP_RTCP_INTERRUPT          (RTP_MASTER_BASE + 0x04) 
 #define RTP_MASTER_RTCP_SETTINGS    (RTP_MASTER_BASE + 0x0c) 
 
 #define STREAM_BASE       (0x400)

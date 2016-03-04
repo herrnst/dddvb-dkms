@@ -762,35 +762,36 @@ static int set_params(struct dvb_frontend *fe)
 	struct dtv_frontend_properties *p = &fe->dtv_property_cache;
 	int status = 0;
 	int Standard;
+	u32 bw;
 
+	bw = (p->bandwidth_hz + 999999) / 1000000;
 	state->m_Frequency = p->frequency;
-
 	if (p->delivery_system == SYS_DVBT ||
 	    p->delivery_system == SYS_DVBT2 ||
 	    p->delivery_system == SYS_ISDBT ||
 	    p->delivery_system == SYS_DVBC2) {
-		switch (p->bandwidth_hz) {
-		case 6000000:
+		switch (bw) {
+		case 6:
 			Standard = HF_DVBT_6MHZ;
 			break;
-		case 7000000:
+		case 7:
 			Standard = HF_DVBT_7MHZ;
 			break;
 		default:
-		case 8000000:
+		case 8:
 			Standard = HF_DVBT_8MHZ;
 			break;
 		}
 	} else if (p->delivery_system == SYS_DVBC_ANNEX_A) {
-		switch (p->bandwidth_hz) {
-		case 6000000:
+		switch (bw) {
+		case 6:
 			Standard = HF_DVBC_6MHZ;
 			break;
-		case 7000000:
+		case 7:
 			Standard = HF_DVBC_7MHZ;
 			break;
 		default:
-		case 8000000:
+		case 8:
 			Standard = HF_DVBC_8MHZ;
 			break;
 		}

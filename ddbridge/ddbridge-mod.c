@@ -909,7 +909,10 @@ void ddbridge_mod_rate_handler(unsigned long data)
 		if (mod->StateCounter) {
 			if (mod->StateCounter == 1) {
 				mul = (0x1000000 * (u64) (OutPacketDiff - InPacketDiff - InPacketDiff/1000));
-				mod->rate_inc = div_u64(mul, OutPacketDiff);
+				if (OutPacketDiff)
+					mod->rate_inc = div_u64(mul, OutPacketDiff);
+				else
+					mod->rate_inc = 0;
 				printk("RI %08x\n", mod->rate_inc);
 				ddbwritel(dev, 	mod->rate_inc, CHANNEL_RATE_INCR(output->nr));
 				mod_busy(dev, output->nr);
@@ -917,9 +920,12 @@ void ddbridge_mod_rate_handler(unsigned long data)
 //#define FACTOR  (1024<<12)
 //double Increment =  FACTOR*PACKET_CLOCKS/double(m_OutputBitrate);                                              
 //double Decrement =  FACTOR*PACKET_CLOCKS/double(m_InputBitrate);                                               
-				mod->PCRIncrement = 3348148758;
-				mod->PCRDecrement = div_u64(3348148758*OutPacketDiff, InPacketDiff); 
-				
+				mod->PCRIncrement = 3348148758ULL;
+				if (InPacketDiff)
+					mod->PCRDecrement = div_u64(3348148758ULL * (u64) OutPacketDiff, 
+								    InPacketDiff); 
+				else
+					mod->PCRDecrement = 0;
 				mod_set_incs(output);
 			}
 			mod->StateCounter--; 
@@ -956,10 +962,13 @@ void ddbridge_mod_rate_handler(unsigned long data)
 		if (mod->StateCounter--) 
 			break;
 
-		PCRIncrement = div_s64((s64)mod->InPacketsSum * 
-				       (s64)mod->PCRDecrement + 
-				       (s64)(mod->OutPacketsSum >> 1) ,
-				       mod->OutPacketsSum);
+		if (mod->OutPacketsSum)
+			PCRIncrement = div_s64((s64)mod->InPacketsSum * 
+					       (s64)mod->PCRDecrement + 
+					       (s64)(mod->OutPacketsSum >> 1) ,
+					       mod->OutPacketsSum);
+		else
+			PCRIncrement = 0;
 		
 		if( mod->PCRAdjustSum > 0 ) 
 			PCRIncrement = RoundPCRDown(PCRIncrement);

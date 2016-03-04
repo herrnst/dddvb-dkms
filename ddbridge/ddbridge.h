@@ -50,7 +50,7 @@
 #include <linux/clk.h>
 #include <linux/spi/spi.h>
 #include <linux/gpio.h>
-
+#include <linux/completion.h>
 
 #include <linux/types.h>
 #include <linux/sched.h>
@@ -82,6 +82,24 @@
 #define DDB_MAX_INPUT   8
 #define DDB_MAX_OUTPUT 10
 
+struct ddb_regset {
+	uint32_t base;
+	uint32_t num;
+	uint32_t size;
+};
+
+struct ddb_regmap {
+	struct ddb_regset i2c;
+	struct ddb_regset i2c_buf;
+	struct ddb_regset dma;
+	struct ddb_regset dma_buf;
+	struct ddb_regset input;
+	struct ddb_regset output;
+	struct ddb_regset channel;
+	struct ddb_regset ci;
+	struct ddb_regset pid_filter;
+};
+
 struct ddb_info {
 	int   type;
 #define DDB_NONE         0
@@ -96,6 +114,7 @@ struct ddb_info {
 	int   fan_num;
 	int   temp_num;
 	int   temp_bus;
+	struct ddb_regmap regmap;
 };
 
 
@@ -200,8 +219,9 @@ struct ddb_i2c {
 	u32                    regs;
 	u32                    rbuf;
 	u32                    wbuf;
-	int                    done;
-	wait_queue_head_t      wq;
+//	int                    done;
+//	wait_queue_head_t      wq;
+	struct completion      completion;
 };
 
 struct ddb_port {
@@ -298,6 +318,7 @@ struct ddb_ns {
 	u32                    rtcp_udplen;
 	u32                    rtcp_len;
 	u32                    ts_offset;
+	u32                    udplen;
 	u8                     p[512];
 };
 
@@ -310,7 +331,9 @@ struct ddb {
 	int                    msi;
 	struct workqueue_struct *wq;
 	u32                    has_dma;
+	u32                    has_ns;
 
+	struct ddb_regmap      regmap;
 	unsigned char         *regs;
 	u32                    regs_len;
 	struct ddb_port        port[DDB_MAX_PORT];
@@ -324,6 +347,7 @@ struct ddb {
 	unsigned long          handler_data[32];
 
 	struct device         *ddb_dev;
+	u32                    ddb_dev_users;
 	u32                    nr;
 	u8                     iobuf[1028];
 
@@ -332,7 +356,7 @@ struct ddb {
 	u32                    i2c_irq;
 
 	u32                    hwid;
-	u32                    regmap;
+	u32                    regmapid;
 	u32                    mac;
 	u32                    devid;
 

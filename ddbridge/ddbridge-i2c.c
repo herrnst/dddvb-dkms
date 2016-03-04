@@ -98,9 +98,10 @@ static int ddb_i2c_cmd(struct ddb_i2c *i2c, u32 adr, u32 cmd)
 	int stat;
 	u32 val;
 
-	i2c->done = 0;
+	//i2c->done = 0;
 	ddbwritel(dev, (adr << 9) | cmd, i2c->regs + I2C_COMMAND);
-	stat = wait_event_timeout(i2c->wq, i2c->done == 1, HZ);
+	//stat = wait_event_timeout(i2c->wq, i2c->done == 1, HZ);
+	stat = wait_for_completion_timeout(&i2c->completion, HZ);
 	if (stat <= 0) {
 		printk(KERN_ERR "DDBridge I2C timeout, card %d, port %d\n",
 		       dev->nr, i2c->nr);
@@ -188,8 +189,9 @@ static void i2c_handler(unsigned long priv)
 {
 	struct ddb_i2c *i2c = (struct ddb_i2c *) priv; 
 
-	i2c->done = 1;
-	wake_up(&i2c->wq);
+	//i2c->done = 1;
+	//wake_up(&i2c->wq);
+	complete(&i2c->completion);
 }
 
 static int ddb_i2c_init(struct ddb *dev)
@@ -210,7 +212,9 @@ static int ddb_i2c_init(struct ddb *dev)
 		ddbwritel(dev, I2C_SPEED_100, i2c->regs + I2C_TIMING);
 		ddbwritel(dev, (i2c->rbuf << 16) | i2c->wbuf,
 			  i2c->regs + I2C_TASKADDRESS);
-		init_waitqueue_head(&i2c->wq);
+		//init_waitqueue_head(&i2c->wq);
+		init_completion(&i2c->completion);
+
 		adap = &i2c->adap;
 		i2c_set_adapdata(adap, i2c);
 #ifdef I2C_ADAP_CLASS_TV_DIGITAL

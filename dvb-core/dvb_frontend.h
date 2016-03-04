@@ -245,8 +245,8 @@ struct analog_demod_ops {
 
 	void (*set_params)(struct dvb_frontend *fe,
 			   struct analog_parameters *params);
-	int  (*has_signal)(struct dvb_frontend *fe);
-	int  (*get_afc)(struct dvb_frontend *fe);
+	int  (*has_signal)(struct dvb_frontend *fe, u16 *signal);
+	int  (*get_afc)(struct dvb_frontend *fe, s32 *afc);
 	void (*tuner_status)(struct dvb_frontend *fe);
 	void (*standby)(struct dvb_frontend *fe);
 	void (*release)(struct dvb_frontend *fe);
@@ -303,7 +303,7 @@ struct dvb_frontend_ops {
 	int (*dishnetwork_send_legacy_command)(struct dvb_frontend* fe, unsigned long cmd);
 	int (*i2c_gate_ctrl)(struct dvb_frontend* fe, int enable);
 	int (*ts_bus_ctrl)(struct dvb_frontend* fe, int acquire);
-	int (*set_lna)(struct dvb_frontend *, int);
+	int (*set_lna)(struct dvb_frontend *);
 
 	/* These callbacks are for devices that implement their own
 	 * tuning algorithms, rather than a simple swzigzag
@@ -391,6 +391,18 @@ struct dtv_frontend_properties {
 	u8			atscmh_sccc_code_mode_b;
 	u8			atscmh_sccc_code_mode_c;
 	u8			atscmh_sccc_code_mode_d;
+
+	u32			lna;
+
+	/* statistics data */
+	struct dtv_fe_stats	strength;
+	struct dtv_fe_stats	cnr;
+	struct dtv_fe_stats	pre_bit_error;
+	struct dtv_fe_stats	pre_bit_count;
+	struct dtv_fe_stats	post_bit_error;
+	struct dtv_fe_stats	post_bit_count;
+	struct dtv_fe_stats	block_error;
+	struct dtv_fe_stats	block_count;
 };
 
 struct dvb_frontend {
