@@ -198,7 +198,11 @@ struct DRXKOfdmScCmd_t
 struct drxk_state {
 	struct dvb_frontend c_frontend;
 	struct dvb_frontend t_frontend;
+#ifndef USE_API3
+	struct dtv_frontend_properties props;
+#else
 	struct dvb_frontend_parameters param;
+#endif
 	struct device *dev;
 
 	struct i2c_adapter *i2c;

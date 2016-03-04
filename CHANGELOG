@@ -1,3 +1,27 @@
+0.9.8 2013.05.05
+
+- 
+
+0.9.7 2013.04.15
+
+- Octopus Net complete
+
+- changes for 3.8 kernels
+
+
+0.9.6 2012.09.26
+
+- basic Octopus Net support
+
+
+0.9.5 2012.08.05
+
+- cleanup
+
+0.9.4 2012.07.11
+
+- support for new modulator bitstream 1.1
+
 0.9.3 2012.06.13
 
 - add hwid, remap attributes

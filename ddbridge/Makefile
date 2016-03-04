@@ -1,7 +1,19 @@
-ddbridge-objs := ddbridge-core.o ddbridge-mod.o
+KDIR	?= /lib/modules/$(shell uname -r)/build
+PWD	:= $(shell pwd)
 
-EXTRA_CFLAGS += -DCONFIG_DVB_LNBP21 -DCONFIG_DVB_STV090x -DCONFIG_DVB_STV6110x -g
+MODDEFS := CONFIG_DVB_DDBRIDGE=m 
 
-obj-$(CONFIG_DVB_DDBRIDGE) += ddbridge.o 
+all: 
+	$(MAKE) -C $(KDIR) SUBDIRS=$(PWD) $(MODDEFS) modules
+	$(MAKE) -C apps
 
-EXTRA_CFLAGS += -I$(SUBDIRS)/dvb-core/ -I$(SUBDIRS)/frontends
+dep:
+	DIR=`pwd`; (cd $(TOPDIR); make SUBDIRS=$$DIR dep)
+
+install: all
+	$(MAKE) -C $(KDIR) SUBDIRS=$(PWD) modules_install
+
+clean:
+	rm -rf */*.o */*.ko */*.mod.c */.*.cmd .tmp_versions Module* modules*
+
+

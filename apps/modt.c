@@ -20,7 +20,7 @@ void send(void)
 	uint32_t c=0;
 	int fdo;
 
-	fdo=open("/dev/dvb/adapter0/sec0", O_WRONLY);
+	fdo=open("/dev/dvb/adapter0/mod0", O_WRONLY);
 
 
 	while (1) {

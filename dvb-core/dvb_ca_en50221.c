@@ -608,67 +608,79 @@ static int dvb_ca_en50221_read_data(struct dvb_ca_private *ca, int slot, u8 * eb
 		}
 	}
 
-	/* check if there is data available */
-	if ((status = ca->pub->read_cam_control(ca->pub, slot, CTRLIF_STATUS)) < 0)
-		goto exit;
-	if (!(status & STATUSREG_DA)) {
-		/* no data */
-		status = 0;
-		goto exit;
-	}
-
-	/* read the amount of data */
-	if ((status = ca->pub->read_cam_control(ca->pub, slot, CTRLIF_SIZE_HIGH)) < 0)
-		goto exit;
-	bytes_read = status << 8;
-	if ((status = ca->pub->read_cam_control(ca->pub, slot, CTRLIF_SIZE_LOW)) < 0)
-		goto exit;
-	bytes_read |= status;
-
-	/* check it will fit */
-	if (ebuf == NULL) {
-		if (bytes_read > ca->slot_info[slot].link_buf_size) {
-			printk("dvb_ca adapter %d: CAM tried to send a buffer larger than the link buffer size (%i > %i)!\n",
-			       ca->dvbdev->adapter->num, bytes_read, ca->slot_info[slot].link_buf_size);
-			ca->slot_info[slot].slot_state = DVB_CA_SLOTSTATE_LINKINIT;
-			status = -EIO;
+	if (ca->pub->read_data && (ca->slot_info[slot].slot_state != DVB_CA_SLOTSTATE_LINKINIT)) {
+		if (ebuf == NULL) 
+			status = ca->pub->read_data(ca->pub, slot, buf, sizeof(buf));
+		else
+			status = ca->pub->read_data(ca->pub, slot, buf, ecount);
+		if (status < 0)
+			return status;
+		bytes_read =  status;
+		if (status == 0)
 			goto exit;
-		}
-		if (bytes_read < 2) {
-			printk("dvb_ca adapter %d: CAM sent a buffer that was less than 2 bytes!\n",
-			       ca->dvbdev->adapter->num);
-			ca->slot_info[slot].slot_state = DVB_CA_SLOTSTATE_LINKINIT;
-			status = -EIO;
-			goto exit;
-		}
 	} else {
-		if (bytes_read > ecount) {
-			printk("dvb_ca adapter %d: CAM tried to send a buffer larger than the ecount size!\n",
-			       ca->dvbdev->adapter->num);
+		
+		/* check if there is data available */
+		if ((status = ca->pub->read_cam_control(ca->pub, slot, CTRLIF_STATUS)) < 0)
+			goto exit;
+		if (!(status & STATUSREG_DA)) {
+			/* no data */
+			status = 0;
+			goto exit;
+		}
+		
+		/* read the amount of data */
+		if ((status = ca->pub->read_cam_control(ca->pub, slot, CTRLIF_SIZE_HIGH)) < 0)
+			goto exit;
+		bytes_read = status << 8;
+		if ((status = ca->pub->read_cam_control(ca->pub, slot, CTRLIF_SIZE_LOW)) < 0)
+			goto exit;
+		bytes_read |= status;
+		
+		/* check it will fit */
+		if (ebuf == NULL) {
+			if (bytes_read > ca->slot_info[slot].link_buf_size) {
+				printk("dvb_ca adapter %d: CAM tried to send a buffer larger than the link buffer size (%i > %i)!\n",
+				       ca->dvbdev->adapter->num, bytes_read, ca->slot_info[slot].link_buf_size);
+				ca->slot_info[slot].slot_state = DVB_CA_SLOTSTATE_LINKINIT;
+				status = -EIO;
+				goto exit;
+			}
+			if (bytes_read < 2) {
+				printk("dvb_ca adapter %d: CAM sent a buffer that was less than 2 bytes!\n",
+				       ca->dvbdev->adapter->num);
+				ca->slot_info[slot].slot_state = DVB_CA_SLOTSTATE_LINKINIT;
+				status = -EIO;
+				goto exit;
+			}
+		} else {
+			if (bytes_read > ecount) {
+				printk("dvb_ca adapter %d: CAM tried to send a buffer larger than the ecount size!\n",
+				       ca->dvbdev->adapter->num);
+				status = -EIO;
+				goto exit;
+			}
+		}
+		
+		/* fill the buffer */
+		for (i = 0; i < bytes_read; i++) {
+			/* read byte and check */
+			if ((status = ca->pub->read_cam_control(ca->pub, slot, CTRLIF_DATA)) < 0)
+				goto exit;
+			
+			/* OK, store it in the buffer */
+			buf[i] = status;
+		}
+		
+		/* check for read error (RE should now be 0) */
+		if ((status = ca->pub->read_cam_control(ca->pub, slot, CTRLIF_STATUS)) < 0)
+			goto exit;
+		if (status & STATUSREG_RE) {
+			ca->slot_info[slot].slot_state = DVB_CA_SLOTSTATE_LINKINIT;
 			status = -EIO;
 			goto exit;
 		}
 	}
-
-	/* fill the buffer */
-	for (i = 0; i < bytes_read; i++) {
-		/* read byte and check */
-		if ((status = ca->pub->read_cam_control(ca->pub, slot, CTRLIF_DATA)) < 0)
-			goto exit;
-
-		/* OK, store it in the buffer */
-		buf[i] = status;
-	}
-
-	/* check for read error (RE should now be 0) */
-	if ((status = ca->pub->read_cam_control(ca->pub, slot, CTRLIF_STATUS)) < 0)
-		goto exit;
-	if (status & STATUSREG_RE) {
-		ca->slot_info[slot].slot_state = DVB_CA_SLOTSTATE_LINKINIT;
-		status = -EIO;
-		goto exit;
-	}
-
 	/* OK, add it to the receive buffer, or copy into external buffer if supplied */
 	if (ebuf == NULL) {
 		if (ca->slot_info[slot].rx_buffer.data == NULL) {
@@ -682,7 +694,7 @@ static int dvb_ca_en50221_read_data(struct dvb_ca_private *ca, int slot, u8 * eb
 
 	dprintk("Received CA packet for slot %i connection id 0x%x last_frag:%i size:0x%x\n", slot,
 		buf[0], (buf[1] & 0x80) == 0, bytes_read);
-
+	
 	/* wake up readers when a last_fragment is received */
 	if ((buf[1] & 0x80) == 0x00) {
 		wake_up_interruptible(&ca->wait_queue);
@@ -717,8 +729,11 @@ static int dvb_ca_en50221_write_data(struct dvb_ca_private *ca, int slot, u8 * b
 	/* sanity check */
 	if (bytes_write > ca->slot_info[slot].link_buf_size)
 		return -EINVAL;
-
-	/* it is possible we are dealing with a single buffer implementation,
+	
+	if (ca->pub->write_data && (ca->slot_info[slot].slot_state != DVB_CA_SLOTSTATE_LINKINIT))
+		return ca->pub->write_data(ca->pub, slot, buf, bytes_write);
+		
+        /* it is possible we are dealing with a single buffer implementation,
 	   thus if there is data available for read or if there is even a read
 	   already in progress, we do nothing but awake the kernel thread to
 	   process the data if necessary. */
@@ -742,6 +757,24 @@ static int dvb_ca_en50221_write_data(struct dvb_ca_private *ca, int slot, u8 * b
 		goto exit;
 	if (!(status & STATUSREG_FR)) {
 		/* it wasn't free => try again later */
+		status = -EAGAIN;
+		goto exit;
+	}
+
+	/* It may need some time for the CAM to settle down, or there might be a
+	   race condition between the CAM, writing HC and our last check for DA.
+	   This happens, if the CAM asserts DA, just after checking DA before we
+	   are setting HC. In this case it might be a bug in the CAM to keep the
+	   FR bit, the lower layer/HW communication requires a longer timeout or
+	   the CAM needs more time internally. But this happens in reality!
+	   We need to read the status from the HW again and do the same we did
+	   for the previous check for DA */
+	if ((status = ca->pub->read_cam_control(ca->pub, slot, CTRLIF_STATUS)) < 0)
+		goto exit;
+	if (status & (STATUSREG_DA | STATUSREG_RE)) {
+		if (status & STATUSREG_DA)
+			dvb_ca_en50221_thread_wakeup(ca);
+		
 		status = -EAGAIN;
 		goto exit;
 	}
@@ -1053,7 +1086,7 @@ static int dvb_ca_en50221_thread(void *data)
 
 					printk("dvb_ca adapter %d: Invalid PC card inserted :(\n",
 					       ca->dvbdev->adapter->num);
-					ca->slot_info[slot].slot_state = DVB_CA_SLOTSTATE_INVALID;
+					//ca->slot_info[slot].slot_state = DVB_CA_SLOTSTATE_INVALID;
 					dvb_ca_en50221_thread_update_delay(ca);
 					break;
 				}
@@ -1109,7 +1142,7 @@ static int dvb_ca_en50221_thread(void *data)
 					}
 
 					printk("dvb_ca adapter %d: DVB CAM link initialisation failed :(\n", ca->dvbdev->adapter->num);
-#if 0
+#if 1
 					ca->slot_info[slot].slot_state = DVB_CA_SLOTSTATE_INVALID;
 					dvb_ca_en50221_thread_update_delay(ca);
 #else
@@ -1311,6 +1344,10 @@ static ssize_t dvb_ca_en50221_io_write(struct file *file,
 	/* fragment the packets & store in the buffer */
 	while (fragpos < count) {
 		fraglen = ca->slot_info[slot].link_buf_size - 2;
+		if (fraglen < 0)
+			break;
+		if (fraglen > HOST_LINK_BUF_SIZE - 2)
+			fraglen = HOST_LINK_BUF_SIZE - 2;
 		if ((count - fragpos) < fraglen)
 			fraglen = count - fragpos;
 

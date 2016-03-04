@@ -77,23 +77,25 @@ enum {
 
 int flashread(int ddb, uint8_t *buf, uint32_t addr, uint32_t len)
 {
-	uint8_t cmd[4]={0x03, (addr>>16)&0xff, 
-			(addr>>8)&0xff, addr&0xff};
+	uint8_t cmd[4]= {0x03, (addr >> 16) & 0xff, 
+			 (addr >> 8) & 0xff, addr & 0xff};
 	
 	return flashio(ddb, cmd, 4, buf, len);
 }
 
 int flashdump(int ddb, uint32_t addr, uint32_t len)
 {
-	int i;
-	uint8_t buf[len];
-
-	flashread(ddb, buf, addr, len);
-
-	for (i=0; i<len; i++) {
-		printf("%02x ", buf[i]);
+	int i, j;
+	uint8_t buf[32];
+	int bl = sizeof(buf);
+	
+	for (j=0; j<len; j+=bl, addr+=bl) {
+		flashread(ddb, buf, addr, bl);
+		for (i=0; i<bl; i++) {
+			printf("%02x ", buf[i]);
+		}
+		printf("\n");
 	}
-	printf("\n");
 }
 
 
@@ -347,8 +349,8 @@ int main(int argc, char **argv)
 	int FlashSize=0;
 	int Flash;
 
-	uint32_t svid = 0;
-	int bin, dump=0;
+	uint32_t svid=0, jump=0, dump=0;
+	int bin;
 
 	int ddbnum = 0;
 	int force = 0;
@@ -363,23 +365,29 @@ int main(int argc, char **argv)
 			{0, 0, 0, 0}
 		};
                 c = getopt_long(argc, argv, 
-				"n:s:l:dfh",
+				"d:n:s:o:l:dfhj",
 				long_options, &option_index);
 		if (c==-1)
 			break;
 
 		switch (c) {
 		case 'd':
-			dump=1;
+			dump = strtoul(optarg, NULL, 16);
 			break;
 		case 's':
 			svid = strtoul(optarg, NULL, 16);
+			break;
+		case 'o':
+			FlashOffset = strtoul(optarg, NULL, 16);
 			break;
 		case 'n':
 			ddbnum = strtol(optarg, NULL, 0);
 			break;
 		case 'f':
 			force = 1;
+			break;
+		case 'j':
+			jump = 1;
 			break;
 		case 'h':
 		default:
@@ -422,6 +430,11 @@ int main(int argc, char **argv)
 	       ddbid.hw, ddbid.regmap);
 #endif
 
+	if (dump) {
+		flashdump(ddb, dump, 128);
+		return 0;
+	}
+
 	if (ddbid.device == 0x0011)
 		type = 1;
 	if (ddbid.device == 0x0201)
@@ -431,9 +444,26 @@ int main(int argc, char **argv)
 	if (ddbid.device == 0x03)
 		type = 0;
 	
-	if( SectorSize == 0 ) return 0;
+	if (!SectorSize)
+		return 0;
 	
-	if (svid) {
+	if (jump) {
+		uint8_t jdat[] = {0xFF,0xFF,0xFF,0xFF, 0xFF,0xFF,0xFF,0xFF, 
+				  0xff,0xFF,0xFF,0xFF, 0xFF,0xFF,0xFF,0xFF,
+				  0xBD,0xB3,0xC4,0x00, 0x00,0x00,0x00,0x00,
+				  0x00,0x00,0xFE,0x00, 0x00,0x00,0x03,0x20,
+				  0x00,0x00,0xFF,0xFF, 0xFF,0xFF,0xFF,0xFF,
+				  0xFF,0xFF,0xFF,0xFF, 0xFF,0xFF,0xFF,0xFF,};
+		BufferSize = SectorSize;
+		FlashOffset = 0x3ff000;
+		buffer = malloc(BufferSize);
+		if (!buffer) {
+			printf("out of memory\n");
+			return 0;
+		}
+		memset(buffer,0xFF,BufferSize);
+		memcpy(buffer+0xf00, jdat, sizeof(jdat));
+	} else if (svid) {
 		BufferSize = SectorSize;
 		FlashOffset = 0;
 		
@@ -472,6 +502,8 @@ int main(int argc, char **argv)
 			printf("Octopus 35\n");
 			break;
 		}
+		//fname="DVBNetPCIeV1A_DVBNetPCIeV1A.bit";
+		//fname="DVBNetV1A_DVBNetV1A.bit";
 		
 		fh = open(fname, O_RDONLY);
 		if (fh < 0 ) {
@@ -497,7 +529,7 @@ int main(int argc, char **argv)
 		} else {
 			BufferSize = (fsize + SectorSize - 1 ) & ~(SectorSize - 1);
 		}
-		printf(" Size     %08x\n",BufferSize);
+		printf(" Size     %08x, target %08x\n", BufferSize, FlashOffset);
 		
 		buffer = malloc(BufferSize);
 

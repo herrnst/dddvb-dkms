@@ -11,7 +11,7 @@ struct stv0367_cfg {
 };
 
 
-extern struct dvb_frontend *stv0367_attach(struct i2c_adapter *i2c, 
+extern struct dvb_frontend *stv0367_attach(struct i2c_adapter *i2c,
 					   struct stv0367_cfg *cfg,
 					   struct dvb_frontend **fe_t);
 #endif

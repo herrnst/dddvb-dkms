@@ -18,3 +18,7 @@ will pipe input 0 of card 0 through CI at port 1 (TAB 2) of card 0.
 Redirection should only be done right after loading the driver 
 (or booting if the driver is built-in) and before using the
 devices in any way.
+
+adapter_alloc=3 is rcommended when using redirect
+The ci device will then show up in the same adapter directory and most
+software will then assume it belongs to the frontend in the same directory.

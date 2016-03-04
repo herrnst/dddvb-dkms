@@ -58,6 +58,10 @@ struct dvb_ca_en50221 {
 	int (*read_cam_control)(struct dvb_ca_en50221* ca, int slot, u8 address);
 	int (*write_cam_control)(struct dvb_ca_en50221* ca, int slot, u8 address, u8 value);
 
+	/* functions for readin/writing data */
+	int (*read_data)(struct dvb_ca_en50221* ca, int slot, u8 *ebuf, int ecount);
+	int (*write_data)(struct dvb_ca_en50221* ca, int slot, u8 *ebuf, int ecount);
+
 	/* Functions for controlling slots */
 	int (*slot_reset)(struct dvb_ca_en50221* ca, int slot);
 	int (*slot_shutdown)(struct dvb_ca_en50221* ca, int slot);

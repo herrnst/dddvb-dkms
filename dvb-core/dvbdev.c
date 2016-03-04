@@ -32,6 +32,7 @@
 #include <linux/fs.h>
 #include <linux/cdev.h>
 #include <linux/mutex.h>
+#include <linux/version.h>
 #include "dvbdev.h"
 
 static DEFINE_MUTEX(dvbdev_mutex);
@@ -47,7 +48,7 @@ static DEFINE_MUTEX(dvbdev_register_lock);
 
 static const char * const dnames[] = {
 	"video", "audio", "sec", "frontend", "demux", "dvr", "ca",
-	"net", "osd"
+	"net", "osd", "ci", "mod", "ns", "nsd"
 };
 
 #ifdef CONFIG_DVB_DYNAMIC_MINORS
@@ -243,6 +244,7 @@ int dvb_register_device(struct dvb_adapter *adap, struct dvb_device **pdvbdev,
 	if (minor == MAX_DVB_MINORS) {
 		kfree(dvbdevfops);
 		kfree(dvbdev);
+		up_write(&minor_rwsem);
 		mutex_unlock(&dvbdev_register_lock);
 		return -EINVAL;
 	}
@@ -419,7 +421,7 @@ int dvb_usercopy(struct file *file,
 	/* call driver */
 	//mutex_lock(&dvbdev_mutex);
 	if ((err = func(file, cmd, parg)) == -ENOIOCTLCMD)
-		err = -EINVAL;
+		err = -ENOTTY;
 	//mutex_unlock(&dvbdev_mutex);
 
 	if (err < 0)
@@ -439,6 +441,7 @@ out:
 	kfree(mbuf);
 	return err;
 }
+EXPORT_SYMBOL(dvb_usercopy);
 
 static int dvb_uevent(struct device *dev, struct kobj_uevent_env *env)
 {
@@ -450,7 +453,11 @@ static int dvb_uevent(struct device *dev, struct kobj_uevent_env *env)
 	return 0;
 }
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,4,0))
 static char *dvb_devnode(struct device *dev, mode_t *mode)
+#else
+static char *dvb_devnode(struct device *dev, umode_t *mode)
+#endif
 {
 	struct dvb_device *dvbdev = dev_get_drvdata(dev);
 

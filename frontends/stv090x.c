@@ -19,6 +19,7 @@
 	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 */
 
+#include <linux/version.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -3177,7 +3178,7 @@ static enum stv090x_signal_state stv090x_algo(struct stv090x_state *state)
 	enum stv090x_signal_state signal_state = STV090x_NOCARRIER;
 	u32 reg;
 	s32 agc1_power, power_iq = 0, i;
-	int lock = 0, low_sr = 0, no_signal = 0;
+	int lock = 0, low_sr = 0;
 
 	reg = STV090x_READ_DEMOD(state, TSCFGH);
 	STV090x_SETFIELD_Px(reg, RST_HWARE_FIELD, 1); /* Stop path 1 stream merger */
@@ -3418,11 +3419,11 @@ static enum stv090x_signal_state stv090x_algo(struct stv090x_state *state)
 				goto err;
 		} else {
 			signal_state = STV090x_NODATA;
-			no_signal = stv090x_chk_signal(state);
+			stv090x_chk_signal(state);
 		}
 	}
 	return signal_state;
-
+	
 err_gateoff:
 	stv090x_i2c_gate_ctrl(state, 0);
 err:
@@ -3430,17 +3431,29 @@ err:
 	return -1;
 }
 
+#ifndef USE_API3
+static enum dvbfe_search stv090x_search(struct dvb_frontend *fe)
+#else
 static enum dvbfe_search stv090x_search(struct dvb_frontend *fe, struct dvb_frontend_parameters *p)
+#endif
 {
 	struct stv090x_state *state = fe->demodulator_priv;
 	struct dtv_frontend_properties *props = &fe->dtv_property_cache;
 
-	if (p->frequency == 0)
+#ifndef USE_API3
+	if (props->frequency == 0)
+#else
 		return DVBFE_ALGO_SEARCH_INVALID;
+#endif
 
 	state->delsys = props->delivery_system;
+#ifndef USE_API3
+	state->frequency = props->frequency;
+	state->srate = props->symbol_rate;
+#else
 	state->frequency = p->frequency;
 	state->srate = p->u.qpsk.symbol_rate;
+#endif
 	state->search_mode = STV090x_SEARCH_AUTO;
 	state->algo = STV090x_COLD_SEARCH;
 	state->fec = STV090x_PRERR;
@@ -3466,8 +3479,14 @@ static enum dvbfe_search stv090x_search(struct dvb_frontend *fe, struct dvb_fron
 static int stv090x_read_status(struct dvb_frontend *fe, enum fe_status *status)
 {
 	struct stv090x_state *state = fe->demodulator_priv;
-	u32 reg;
+	u32 reg, dstatus;
 	u8 search_state;
+
+	*status = 0;
+
+	dstatus = STV090x_READ_DEMOD(state, DSTATUS);
+	if (STV090x_GETFIELD_Px(dstatus, CAR_LOCK_FIELD))
+		*status |= FE_HAS_SIGNAL | FE_HAS_CARRIER;
 
 	reg = STV090x_READ_DEMOD(state, DMDSTATE);
 	search_state = STV090x_GETFIELD_Px(reg, HEADER_MODE_FIELD);
@@ -3477,44 +3496,33 @@ static int stv090x_read_status(struct dvb_frontend *fe, enum fe_status *status)
 	case 1: /* first PLH detected */
 	default:
 		dprintk(FE_DEBUG, 1, "Status: Unlocked (Searching ..)");
-		*status = 0;
 		break;
 
 	case 2: /* DVB-S2 mode */
 		dprintk(FE_DEBUG, 1, "Delivery system: DVB-S2");
-		reg = STV090x_READ_DEMOD(state, DSTATUS);
-		if (STV090x_GETFIELD_Px(reg, LOCK_DEFINITIF_FIELD)) {
+		if (STV090x_GETFIELD_Px(dstatus, LOCK_DEFINITIF_FIELD)) {
 			reg = STV090x_READ_DEMOD(state, PDELSTATUS1);
 			if (STV090x_GETFIELD_Px(reg, PKTDELIN_LOCK_FIELD)) {
+				*status |= FE_HAS_VITERBI;
 				reg = STV090x_READ_DEMOD(state, TSSTATUS);
-				if (STV090x_GETFIELD_Px(reg, TSFIFO_LINEOK_FIELD)) {
-					*status = FE_HAS_SIGNAL |
-						  FE_HAS_CARRIER |
-						  FE_HAS_VITERBI |
-						  FE_HAS_SYNC |
-						  FE_HAS_LOCK;
-				}
+				if (STV090x_GETFIELD_Px(reg, TSFIFO_LINEOK_FIELD)) 
+					*status |= FE_HAS_SYNC | FE_HAS_LOCK;
 			}
 		}
 		break;
 
 	case 3: /* DVB-S1/legacy mode */
 		dprintk(FE_DEBUG, 1, "Delivery system: DVB-S");
-		reg = STV090x_READ_DEMOD(state, DSTATUS);
-		if (STV090x_GETFIELD_Px(reg, LOCK_DEFINITIF_FIELD)) {
+		if (STV090x_GETFIELD_Px(dstatus, LOCK_DEFINITIF_FIELD)) {
 			reg = STV090x_READ_DEMOD(state, VSTATUSVIT);
-			if (STV090x_GETFIELD_Px(reg, LOCKEDVIT_FIELD)) {
-				reg = STV090x_READ_DEMOD(state, TSSTATUS);
-				if (STV090x_GETFIELD_Px(reg, TSFIFO_LINEOK_FIELD)) {
-					*status = FE_HAS_SIGNAL |
-						  FE_HAS_CARRIER |
-						  FE_HAS_VITERBI |
-						  FE_HAS_SYNC |
-						  FE_HAS_LOCK;
-				}
-			}
-		}
-		break;
+                        if (STV090x_GETFIELD_Px(reg, LOCKEDVIT_FIELD)) {
+                                *status |= FE_HAS_VITERBI;
+                                reg = STV090x_READ_DEMOD(state, TSSTATUS);
+                                if (STV090x_GETFIELD_Px(reg, TSFIFO_LINEOK_FIELD))
+                                        *status |= FE_HAS_SYNC | FE_HAS_LOCK;
+                        }
+                }
+                break;
 	}
 
 	return 0;
@@ -4786,10 +4794,14 @@ int stv090x_set_gpio(struct dvb_frontend *fe, u8 gpio, u8 dir, u8 value,
 EXPORT_SYMBOL(stv090x_set_gpio);
 
 static struct dvb_frontend_ops stv090x_ops = {
-
+#ifndef USE_API3
+        .delsys = { SYS_DVBS, SYS_DVBS2, SYS_DSS },
+#endif
 	.info = {
 		.name			= "STV090x Multistandard",
+#ifdef USE_API3
 		.type			= FE_QPSK,
+#endif
 		.frequency_min		= 950000,
 		.frequency_max 		= 2150000,
 		.frequency_stepsize	= 0,

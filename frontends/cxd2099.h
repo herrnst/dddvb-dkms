@@ -30,8 +30,8 @@
 struct cxd2099_cfg {
 	u32 bitrate;
 	u8  adr;
-	u8  polarity : 1;
-	u8  clock_mode : 1;
+	u8  polarity;
+	u8  clock_mode;
 };
 
 struct dvb_ca_en50221 *cxd2099_attach(struct cxd2099_cfg *cfg, 

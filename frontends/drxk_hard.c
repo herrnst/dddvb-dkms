@@ -174,7 +174,7 @@ bool IsA1WithRomCode(struct drxk_state *state)
 #define DRXK_QAM_SL_SIG_POWER_QAM128      (20992)
 #define DRXK_QAM_SL_SIG_POWER_QAM256      (43520)
 
-inline u32 MulDiv32(u32 a, u32 b, u32 c)
+static inline u32 MulDiv32(u32 a, u32 b, u32 c)
 {
 	u64 tmp64;
 
@@ -1618,8 +1618,11 @@ static int Start(struct drxk_state *state, s32 offsetFreq,
 			break;
 		}
 		state->m_bMirrorFreqSpect =
+#ifndef USE_API3
+			(state->props.inversion == INVERSION_ON);
+#else
 			(state->param.inversion == INVERSION_ON);
-		
+#endif
 		if (IntermediateFrequency < 0) {
 			state->m_bMirrorFreqSpect = !state->m_bMirrorFreqSpect;
 			IntermediateFrequency = -IntermediateFrequency;
@@ -2134,7 +2137,11 @@ static int GetQAMSignalToNoise(struct drxk_state *state, s32 *pSignalToNoise)
 		/* get the register value needed for MER */
 		CHK_ERROR(Read16_0(state,QAM_SL_ERR_POWER__A, &qamSlErrPower));
 		
+#ifndef USE_API3
+		switch(state->props.modulation) {
+#else
 		switch(state->param.u.qam.modulation) {
+#endif
 		case QAM_16:  
 			qamSlSigPower = DRXK_QAM_SL_SIG_POWER_QAM16 << 2; 
 			break;
@@ -2343,7 +2350,11 @@ static int GetDVBCQuality(struct drxk_state *state,  s32 *pQuality)
 		
 		CHK_ERROR(GetQAMSignalToNoise(state, &SignalToNoise));
 		
+#ifndef USE_API3
+		switch(state->props.modulation) {
+#else
 		switch(state->param.u.qam.modulation) {
+#endif
 		case QAM_16:  
 			SignalToNoiseRel = SignalToNoise - 200;
 			break;
@@ -3196,7 +3207,11 @@ static int SetDVBT (struct drxk_state *state,u16 IntermediateFreqkHz, s32 tunerF
 		/*== Write channel settings to device =====================================*/
 
 		/* mode */
+#ifndef USE_API3
+		switch(state->props.transmission_mode) {
+#else
 		switch(state->param.u.ofdm.transmission_mode) {
+#endif
 		case TRANSMISSION_MODE_AUTO:
 		default:
 			operationMode |= OFDM_SC_RA_RAM_OP_AUTO_MODE__M;
@@ -3210,7 +3225,11 @@ static int SetDVBT (struct drxk_state *state,u16 IntermediateFreqkHz, s32 tunerF
 		}
 
 		/* guard */
+#ifndef USE_API3
+		switch(state->props.guard_interval) {
+#else
 		switch(state->param.u.ofdm.guard_interval) {
+#endif
 		default:
 		case GUARD_INTERVAL_AUTO:
 			operationMode |= OFDM_SC_RA_RAM_OP_AUTO_GUARD__M;
@@ -3230,7 +3249,11 @@ static int SetDVBT (struct drxk_state *state,u16 IntermediateFreqkHz, s32 tunerF
 		}
 
 		/* hierarchy */
+#ifndef USE_API3
+		switch(state->props.hierarchy) {
+#else
 		switch(state->param.u.ofdm.hierarchy_information) {
+#endif
 		case HIERARCHY_AUTO:
 		case 	HIERARCHY_NONE:
 		default:
@@ -3251,7 +3274,11 @@ static int SetDVBT (struct drxk_state *state,u16 IntermediateFreqkHz, s32 tunerF
 
 
 		/* constellation */
+#ifndef USE_API3
+		switch(state->props.modulation) {
+#else
 		switch(state->param.u.ofdm.constellation) {
+#endif
 		case QAM_AUTO:
 		default:
 			operationMode |= OFDM_SC_RA_RAM_OP_AUTO_CONST__M;
@@ -3290,7 +3317,11 @@ static int SetDVBT (struct drxk_state *state,u16 IntermediateFreqkHz, s32 tunerF
 #endif
 
 		/* coderate */
+#ifndef USE_API3
+		switch(state->props.code_rate_HP) {
+#else
 		switch(state->param.u.ofdm.code_rate_HP) {
+#endif
 		case FEC_AUTO:
 		default:
 			operationMode |= OFDM_SC_RA_RAM_OP_AUTO_RATE__M;
@@ -3319,9 +3350,18 @@ static int SetDVBT (struct drxk_state *state,u16 IntermediateFreqkHz, s32 tunerF
 		/* Also set parameters for EC_OC fix, note EC_OC_REG_TMD_HIL_MAR is changed
 		   by SC for fix for some 8K,1/8 guard but is restored by InitEC and ResetEC
 		   functions */
+#ifndef USE_API3
+		switch(state->props.bandwidth_hz) {
+#else
 		switch(state->param.u.ofdm.bandwidth) {
+#endif
+#ifndef USE_API3
+		case 0:
+		case 8000000:
+#else
 		case BANDWIDTH_AUTO:
 		case BANDWIDTH_8_MHZ:
+#endif
 			bandwidth = DRXK_BANDWIDTH_8MHZ_IN_HZ;
 			CHK_ERROR(Write16_0(state, OFDM_SC_RA_RAM_SRMM_FIX_FACT_8K__A, 3052));
 			/* cochannel protection for PAL 8 MHz */
@@ -3330,7 +3370,11 @@ static int SetDVBT (struct drxk_state *state,u16 IntermediateFreqkHz, s32 tunerF
 			CHK_ERROR(Write16_0(state, OFDM_SC_RA_RAM_NI_INIT_2K_PER_LEFT__A,  7));
 			CHK_ERROR(Write16_0(state, OFDM_SC_RA_RAM_NI_INIT_2K_PER_RIGHT__A, 1));
 			break;
+#ifndef USE_API3
+		case 7000000:
+#else
 		case BANDWIDTH_7_MHZ:
+#endif
 			bandwidth = DRXK_BANDWIDTH_7MHZ_IN_HZ;
 			CHK_ERROR(Write16_0(state, OFDM_SC_RA_RAM_SRMM_FIX_FACT_8K__A, 3491));
 			/* cochannel protection for PAL 7 MHz */
@@ -3339,7 +3383,11 @@ static int SetDVBT (struct drxk_state *state,u16 IntermediateFreqkHz, s32 tunerF
 			CHK_ERROR(Write16_0(state, OFDM_SC_RA_RAM_NI_INIT_2K_PER_LEFT__A,  4));
 			CHK_ERROR(Write16_0(state, OFDM_SC_RA_RAM_NI_INIT_2K_PER_RIGHT__A, 1));
 			break;
+#ifndef USE_API3
+		case 6000000:
+#else
 		case BANDWIDTH_6_MHZ:
+#endif
 			bandwidth = DRXK_BANDWIDTH_6MHZ_IN_HZ;
 			CHK_ERROR(Write16_0(state, OFDM_SC_RA_RAM_SRMM_FIX_FACT_8K__A, 4073));
 			/* cochannel protection for NTSC 6 MHz */
@@ -4120,6 +4168,12 @@ static int QAMSetSymbolrate(struct drxk_state *state)
     u16  ratesel = 0;
     u32   lcSymbRate = 0;
     int    status;
+    u32 srate = 
+#ifndef USE_API3
+	    state->props.symbol_rate;
+#else
+            state->param.u.qam.symbol_rate;
+#endif
 
     do
     {
@@ -4128,15 +4182,15 @@ static int QAMSetSymbolrate(struct drxk_state *state)
        ratesel = 0;
 	//KdPrintEx((MSG_TRACE " - " __FUNCTION__ " state->m_SymbolRate = %d\n",state->m_SymbolRate));
        //printk("SR %d\n", state->param.u.qam.symbol_rate);
-       if (state->param.u.qam.symbol_rate <= 1188750)
+       if (srate <= 1188750)
        {
 	  ratesel = 3;
        }
-       else if (state->param.u.qam.symbol_rate <= 2377500)
+       else if (srate <= 2377500)
        {
 	  ratesel = 2;
        }
-       else if (state->param.u.qam.symbol_rate  <= 4755000)
+       else if (srate  <= 4755000)
        {
 	  ratesel = 1;
        }
@@ -4145,7 +4199,7 @@ static int QAMSetSymbolrate(struct drxk_state *state)
        /*
 	   IqmRcRate = ((Fadc / (symbolrate * (4<<ratesel))) - 1) * (1<<23)
        */
-       symbFreq = state->param.u.qam.symbol_rate * (1 << ratesel);
+       symbFreq = srate * (1 << ratesel);
        if (symbFreq == 0)
        {
 	  /* Divide by zero */
@@ -4159,7 +4213,7 @@ static int QAMSetSymbolrate(struct drxk_state *state)
        /*
 	   LcSymbFreq = round (.125 *  symbolrate / adcFreq * (1<<15))
        */
-	symbFreq = state->param.u.qam.symbol_rate;
+	symbFreq = srate;
        if (adcFrequency == 0)
        {
 	  /* Divide by zero */
@@ -4270,7 +4324,11 @@ static int SetQAM(struct drxk_state *state,u16 IntermediateFreqkHz, s32 tunerFre
 		parameterLen = 4;
 
 		/* Set params */
+#ifndef USE_API3
+		switch(state->props.modulation)
+#else
 		switch(state->param.u.qam.modulation)
+#endif
 		{
 		case QAM_256:
 			state->m_Constellation = DRX_CONSTELLATION_QAM256;
@@ -4307,7 +4365,11 @@ static int SetQAM(struct drxk_state *state,u16 IntermediateFreqkHz, s32 tunerFre
 		/* Setup BER measurement */
 		CHK_ERROR(SetQAMMeasurement (state,
 					      state->m_Constellation,
-					       state->param.u.qam.symbol_rate));
+#ifndef USE_API3
+					     state->props.symbol_rate));
+#else
+					     state->param.u.qam.symbol_rate));
+#endif
 
 		/* Reset default values */
        CHK_ERROR(Write16_0(state, IQM_CF_SCALE_SH__A, IQM_CF_SCALE_SH__PRE));
@@ -4342,7 +4404,11 @@ static int SetQAM(struct drxk_state *state,u16 IntermediateFreqkHz, s32 tunerFre
        CHK_ERROR(Write16_0(state, SCU_COMM_EXEC__A, SCU_COMM_EXEC_HOLD));
 
        /* STEP 4: constellation specific setup */
+#ifndef USE_API3
+       switch (state->props.modulation)
+#else
        switch (state->param.u.qam.modulation)
+#endif
        {
        case QAM_16:
 	       CHK_ERROR(SetQAM16(state));
@@ -4793,9 +4859,17 @@ static int drxk_gate_ctrl(struct dvb_frontend* fe, int enable)
 	return ConfigureI2CBridge(state, enable ? true : false);
 }
 
+#ifndef USE_API3
+static int drxk_set_parameters (struct dvb_frontend *fe)
+#else
 static int drxk_set_parameters (struct dvb_frontend *fe,
 				struct dvb_frontend_parameters *p)
+#endif
 {
+#ifndef USE_API3
+	struct dtv_frontend_properties *p = &fe->dtv_property_cache;
+	u32 delsys  = p->delivery_system, old_delsys;
+#endif
 	struct drxk_state *state = fe->demodulator_priv;
 	u32 IF;
 
@@ -4804,11 +4878,18 @@ static int drxk_set_parameters (struct dvb_frontend *fe,
 	if (fe->ops.i2c_gate_ctrl)
 		fe->ops.i2c_gate_ctrl(fe, 1);
 	if (fe->ops.tuner_ops.set_params)
+#ifndef USE_API3
+		fe->ops.tuner_ops.set_params(fe);
+#else
 		fe->ops.tuner_ops.set_params(fe, p);
+#endif
 	if (fe->ops.i2c_gate_ctrl)
 		fe->ops.i2c_gate_ctrl(fe, 0);
+#ifndef USE_API3
+#else
 	state->param=*p;
-	fe->ops.tuner_ops.get_if(fe, &IF);
+#endif
+	fe->ops.tuner_ops.get_if_frequency(fe, &IF); /* WTF is a frequency frequency? */
 	Start(state, 0, IF);
 
 	//printk("%s IF=%d done\n", __FUNCTION__, IF);
