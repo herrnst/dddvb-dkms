@@ -1,7 +1,8 @@
 /*
  * octonet.c: Digital Devices network tuner driver
  *
- * Copyright (C) 2012-13 Digital Devices GmbH
+ * Copyright (C) 2012-14 Digital Devices GmbH
+ *                       Ralph Metzler <rmetzler@digitaldevices.de>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -38,7 +39,8 @@
 
 static int adapter_alloc = 3;
 module_param(adapter_alloc, int, 0444);
-MODULE_PARM_DESC(adapter_alloc, "0-one adapter per io, 1-one per tab with io, 2-one per tab, 3-one for all");
+MODULE_PARM_DESC(adapter_alloc,
+"0-one adapter per io, 1-one per tab with io, 2-one per tab, 3-one for all");
 
 #define DVB_NETSTREAM
 
@@ -90,28 +92,37 @@ static int __init octonet_probe(struct platform_device *pdev)
 	dev->dev = &pdev->dev;
 	dev->pfdev = pdev;
 	dev->info = &ddb_octonet;
-	mutex_init(&dev->mutex);
 
+	mutex_init(&dev->mutex);
 	regs = platform_get_resource(dev->pfdev, IORESOURCE_MEM, 0);
 	if (!regs)
 		return -ENXIO;
 	dev->regs_len = (regs->end - regs->start) + 1;
+	dev_info(dev->dev, "regs_start=%08x regs_len=%08x\n",
+		 regs->start, dev->regs_len);
 	dev->regs = ioremap(regs->start, dev->regs_len);
-        if (!dev->regs) 
+	if (!dev->regs) {
+		dev_err(dev->dev, "ioremap failed\n");
 		return -ENOMEM;
+	}
 
-	dev->hwid = ddbreadl(dev, 0);
-	dev->regmapid = ddbreadl(dev, 4);
-	dev->devid = ddbreadl(dev, 8);
-	dev->mac = ddbreadl(dev, 12);
-	
-	printk(KERN_INFO "HW  %08x REGMAP %08x\n", dev->hwid, dev->regmapid);
-	printk(KERN_INFO "MAC %08x DEVID  %08x\n", dev->mac, dev->devid);
-	
+	dev->ids.hwid = ddbreadl(dev, 0);
+	dev->ids.regmapid = ddbreadl(dev, 4);
+	dev->ids.devid = ddbreadl(dev, 8);
+	dev->ids.mac = ddbreadl(dev, 12);
+
+	dev->ids.vendor = dev->ids.devid & 0xffff;
+	dev->ids.device = dev->ids.devid >> 16;
+	dev->ids.subvendor = dev->ids.devid & 0xffff;
+	dev->ids.subdevice = dev->ids.devid >> 16;
+
+	pr_info("HW  %08x REGMAP %08x\n", dev->ids.hwid, dev->ids.regmapid);
+	pr_info("MAC %08x DEVID  %08x\n", dev->ids.mac, dev->ids.devid);
+
 	ddbwritel(dev, 0x00000000, INTERRUPT_ENABLE);
 
-	if (request_irq(platform_get_irq(dev->pfdev, 0), irq_handler, 
-			IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING, 
+	if (request_irq(platform_get_irq(dev->pfdev, 0), irq_handler,
+			IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
 			"octonet-dvb", (void *) dev) < 0)
 		goto fail;
 	ddbwritel(dev, 0x0fffff0f, INTERRUPT_ENABLE);
@@ -119,12 +130,14 @@ static int __init octonet_probe(struct platform_device *pdev)
 	ddbwritel(dev, 14 + (vlan ? 4 : 0), ETHER_LENGTH);
 
 
+	mutex_init(&dev->octonet_i2c_lock);
 	if (ddb_i2c_init(dev) < 0)
 		goto fail1;
+
 	ddb_ports_init(dev);
 	if (ddb_ports_attach(dev) < 0)
 		goto fail3;
-	
+
 	ddb_nsd_attach(dev);
 
 	ddb_device_create(dev);
@@ -133,9 +146,11 @@ static int __init octonet_probe(struct platform_device *pdev)
 
 fail3:
 	ddb_ports_detach(dev);
-	printk(KERN_ERR "fail3\n");
+	dev_err(dev->dev, "fail3\n");
 fail1:
+	dev_err(dev->dev, "fail1\n");
 fail:
+	dev_err(dev->dev, "fail\n");
 	ddbwritel(dev, 0, ETHER_CONTROL);
 	ddbwritel(dev, 0, INTERRUPT_ENABLE);
 	octonet_unmap(dev);
@@ -147,18 +162,25 @@ static struct platform_driver octonet_driver = {
 	.remove	= __exit_p(octonet_remove),
 	.probe	= octonet_probe,
 	.driver		= {
-		.name	= "octonet-dvb",		
+		.name	= "octonet-dvb",
 		.owner	= THIS_MODULE,
 	},
 };
 
 static __init int init_octonet(void)
 {
-	printk(KERN_INFO "Digital Devices OctoNet driver, "
-	       "Copyright (C) 2012-2013 Digital Devices GmbH\n");
-	if (ddb_class_create())
-		return -1;
-	return platform_driver_probe(&octonet_driver, octonet_probe);
+	int res;
+
+	pr_info("Digital Devices OctoNet driver, Copyright (C) 2012-2013 Digital Devices GmbH\n");
+	res = ddb_class_create();
+	if (res)
+		return res;
+	res = platform_driver_probe(&octonet_driver, octonet_probe);
+	if (res) {
+		ddb_class_destroy();
+		return res;
+	}
+	return 0;
 }
 
 static __exit void exit_octonet(void)
@@ -171,6 +193,6 @@ module_init(init_octonet);
 module_exit(exit_octonet);
 
 MODULE_DESCRIPTION("GPL");
-MODULE_AUTHOR("Metzler Brothers Systementwicklung");
+MODULE_AUTHOR("Ralph Metzler, Metzler Brothers Systementwicklung");
 MODULE_LICENSE("GPL");
-MODULE_VERSION("0.3");
+MODULE_VERSION("0.5");

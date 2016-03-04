@@ -139,7 +139,7 @@ static int i2c_write(struct i2c_adapter *adap, u8 adr, u8 *data, int len)
 static int WriteRegs(struct tda_state *state,
 		     u8 SubAddr, u8 *Regs, u16 nRegs)
 {
-	u8 data[nRegs+1];
+	u8 data[NUM_REGS + 1];
 
 	data[0] = SubAddr;
 	memcpy(data + 1, Regs, nRegs);
@@ -292,7 +292,7 @@ static int ThermometerRead(struct tda_state *state, u8 *pTM_Value)
 		status = UpdateReg(state, TM);
 		if (status < 0)
 			break;
-		state->m_Regs[EP4] &= ~0x03;       /* CAL_mode = 0 ????????? */
+		state->m_Regs[EP4] &= ~0x03;     /* CAL_mode = 0 ????????? */
 		status = UpdateReg(state, EP4);
 		if (status < 0)
 			break;
@@ -1020,7 +1020,7 @@ static int ChannelConfiguration(struct tda_state *state,
 			state->m_Regs[EP4] = state->m_EP4 | state->m_IFLevelDigital;
 
 		if ((Standard == HF_FM_Radio) && state->m_bFMInput)
-			state->m_Regs[EP4] |= 80;
+			state->m_Regs[EP4] |= 0x80;
 
 		state->m_Regs[MPD] &= ~0x80;
 		if (Standard > HF_AnalogMax)
@@ -1297,5 +1297,5 @@ struct dvb_frontend *tda18271c2dd_attach(struct dvb_frontend *fe,
 EXPORT_SYMBOL_GPL(tda18271c2dd_attach);
 
 MODULE_DESCRIPTION("TDA18271C2 driver");
-MODULE_AUTHOR("DD");
+MODULE_AUTHOR("Ralph Metzler, Manfred Voelkel");
 MODULE_LICENSE("GPL");

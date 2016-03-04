@@ -2,6 +2,7 @@
  * ddbridge-i2c.h: Digital Devices bridge i2c driver
  *
  * Copyright (C) 2010-2013 Digital Devices GmbH
+ *                         Ralph Metzler <rmetzler@digitaldevices.de>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -27,9 +28,11 @@
 #include <linux/i2c.h>
 #include <linux/types.h>
 
-static inline int i2c_write(struct i2c_adapter *adap, u8 adr, u8 *data, int len)
+static inline int i2c_write(struct i2c_adapter *adap, u8 adr,
+			    u8 *data, int len)
 {
-	struct i2c_msg msg = {.addr = adr, .flags = 0, .buf = data, .len = len};
+	struct i2c_msg msg = {.addr = adr, .flags = 0,
+			      .buf = data, .len = len};
 
 	return (i2c_transfer(adap, &msg, 1) == 1) ? 0 : -1;
 }
@@ -42,7 +45,7 @@ static inline int i2c_read(struct i2c_adapter *adapter, u8 adr, u8 *val)
 }
 
 static inline int i2c_read_regs(struct i2c_adapter *adapter,
-			 u8 adr, u8 reg, u8 *val, u8 len)
+				u8 adr, u8 reg, u8 *val, u8 len)
 {
 	struct i2c_msg msgs[2] = {{.addr = adr,  .flags = 0,
 				   .buf  = &reg, .len   = 1 },
@@ -51,8 +54,8 @@ static inline int i2c_read_regs(struct i2c_adapter *adapter,
 	return (i2c_transfer(adapter, msgs, 2) == 2) ? 0 : -1;
 }
 
-static inline int i2c_read_regs16(struct i2c_adapter *adapter, 
-			   u8 adr, u16 reg, u8 *val, u8 len)
+static inline int i2c_read_regs16(struct i2c_adapter *adapter,
+				  u8 adr, u16 reg, u8 *val, u8 len)
 {
 	u8 reg16[2] = { reg >> 8, reg };
 	struct i2c_msg msgs[2] = {{.addr = adr,  .flags = 0,
@@ -62,7 +65,8 @@ static inline int i2c_read_regs16(struct i2c_adapter *adapter,
 	return (i2c_transfer(adapter, msgs, 2) == 2) ? 0 : -1;
 }
 
-static inline int i2c_read_reg(struct i2c_adapter *adapter, u8 adr, u8 reg, u8 *val)
+static inline int i2c_read_reg(struct i2c_adapter *adapter, u8 adr,
+			       u8 reg, u8 *val)
 {
 	struct i2c_msg msgs[2] = {{.addr = adr,  .flags = 0,
 				   .buf  = &reg, .len   = 1},
@@ -72,7 +76,7 @@ static inline int i2c_read_reg(struct i2c_adapter *adapter, u8 adr, u8 reg, u8 *
 }
 
 static inline int i2c_read_reg16(struct i2c_adapter *adapter, u8 adr,
-			  u16 reg, u8 *val)
+				 u16 reg, u8 *val)
 {
 	u8 msg[2] = {reg >> 8, reg & 0xff};
 	struct i2c_msg msgs[2] = {{.addr = adr, .flags = 0,
@@ -83,7 +87,7 @@ static inline int i2c_read_reg16(struct i2c_adapter *adapter, u8 adr,
 }
 
 static inline int i2c_write_reg16(struct i2c_adapter *adap, u8 adr,
-			   u16 reg, u8 val)
+				  u16 reg, u8 val)
 {
 	u8 msg[3] = {reg >> 8, reg & 0xff, val};
 
@@ -91,7 +95,7 @@ static inline int i2c_write_reg16(struct i2c_adapter *adap, u8 adr,
 }
 
 static inline int i2c_write_reg(struct i2c_adapter *adap, u8 adr,
-			  u8 reg, u8 val)
+				u8 reg, u8 val)
 {
 	u8 msg[2] = {reg, val};
 

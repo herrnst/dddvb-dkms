@@ -54,8 +54,8 @@
 /* ------------------------------------------------------------------------- */
 
 /* Interrupt controller
-// How many MSI's are available depends on HW (Min 2 max 8)
-// How many are usable also depends on Host platform
+   How many MSI's are available depends on HW (Min 2 max 8)
+   How many are usable also depends on Host platform
 */
 
 #define INTERRUPT_BASE   (0x40)
@@ -101,14 +101,14 @@
 #define INTMASK_TSOUTPUT4   (0x00080000)
 
 
-//  Clock Generator ( Sil598 @ 0xAA I2c )
+/*  Clock Generator ( Sil598 @ 0xAA I2c ) */
 #define CLOCKGEN_BASE       (0x80)
 #define CLOCKGEN_CONTROL    (CLOCKGEN_BASE + 0x00)
 #define CLOCKGEN_INDEX      (CLOCKGEN_BASE + 0x04)
 #define CLOCKGEN_WRITEDATA  (CLOCKGEN_BASE + 0x08)
 #define CLOCKGEN_READDATA   (CLOCKGEN_BASE + 0x0C)
 
-// DAC ( AD9781/AD9783 SPI )
+/* DAC ( AD9781/AD9783 SPI ) */
 #define DAC_BASE            (0x090)
 #define DAC_CONTROL         (DAC_BASE)
 #define DAC_WRITE_DATA      (DAC_BASE+4)
@@ -118,15 +118,13 @@
 #define DAC_CONTROL_STARTIO         (0x100)
 #define DAC_CONTROL_RESET           (0x200)
 
-// Temperature Monitor ( 2x LM75A @ 0x90,0x92 I2c )
+/* Temperature Monitor ( 2x LM75A @ 0x90,0x92 I2c ) */
 #define TEMPMON_BASE        (0xA0)
 #define TEMPMON_CONTROL    (TEMPMON_BASE + 0x00)
-#define TEMPMON_SENSOR1    (TEMPMON_BASE + 0x08)    // SHORT Temperature in °C x 256
-#define TEMPMON_SENSOR2    (TEMPMON_BASE + 0x0C)    // SHORT Temperature in °C x 256
-
-//
-// --------------------------------------------------------------------------
-
+/* SHORT Temperature in °C x 256 */
+#define TEMPMON_CORE       (TEMPMON_BASE + 0x04)
+#define TEMPMON_SENSOR1    (TEMPMON_BASE + 0x08)
+#define TEMPMON_SENSOR2    (TEMPMON_BASE + 0x0C)
 
 /* ------------------------------------------------------------------------- */
 /* I2C Master Controller */
@@ -175,16 +173,16 @@
 /* DMA  Buffer */
 
 #define TS_INPUT_BASE       (0x200)
-#define TS_INPUT_CONTROL(i)         (TS_INPUT_BASE + (i) * 0x10 + 0x00) 
-#define TS_INPUT_CONTROL2(i)        (TS_INPUT_BASE + (i) * 0x10 + 0x04) 
+#define TS_INPUT_CONTROL(i)         (TS_INPUT_BASE + (i) * 0x10 + 0x00)
+#define TS_INPUT_CONTROL2(i)        (TS_INPUT_BASE + (i) * 0x10 + 0x04)
 
 #define TS_OUTPUT_BASE       (0x280)
-#define TS_OUTPUT_CONTROL(i)        (TS_OUTPUT_BASE + (i) * 0x10 + 0x00) 
-#define TS_OUTPUT_CONTROL2(i)       (TS_OUTPUT_BASE + (i) * 0x10 + 0x04) 
+#define TS_OUTPUT_CONTROL(i)        (TS_OUTPUT_BASE + (i) * 0x10 + 0x00)
+#define TS_OUTPUT_CONTROL2(i)       (TS_OUTPUT_BASE + (i) * 0x10 + 0x04)
 
 #define DMA_BUFFER_BASE     (0x300)
 
-#define DMA_BUFFER_CONTROL(i)       (DMA_BUFFER_BASE + (i) * 0x10 + 0x00) 
+#define DMA_BUFFER_CONTROL(i)       (DMA_BUFFER_BASE + (i) * 0x10 + 0x00)
 #define DMA_BUFFER_ACK(i)           (DMA_BUFFER_BASE + (i) * 0x10 + 0x04)
 #define DMA_BUFFER_CURRENT(i)       (DMA_BUFFER_BASE + (i) * 0x10 + 0x08)
 #define DMA_BUFFER_SIZE(i)          (DMA_BUFFER_BASE + (i) * 0x10 + 0x0c)
@@ -232,36 +230,47 @@
 #define CI_BUFFER_SIZE                  (0x0800)
 #define CI_BLOCKIO_BUFFER_SIZE          (CI_BUFFER_SIZE/2)
 
-#define CI_BUFFER(i)                    (CI_BUFFER_BASE + (i) * CI_BUFFER_SIZE )
-#define CI_BLOCKIO_RECEIVE_BUFFER(i)    (CI_BUFFER_BASE + (i) * CI_BUFFER_SIZE )
-#define CI_BLOCKIO_SEND_BUFFER(i)       (CI_BUFFER_BASE + (i) * CI_BUFFER_SIZE + CI_BLOCKIO_BUFFER_SIZE )
+#define CI_BUFFER(i)                  (CI_BUFFER_BASE + (i) * CI_BUFFER_SIZE)
+#define CI_BLOCKIO_RECEIVE_BUFFER(i)  (CI_BUFFER_BASE + (i) * CI_BUFFER_SIZE)
+#define CI_BLOCKIO_SEND_BUFFER(i)  \
+	(CI_BUFFER_BASE + (i) * CI_BUFFER_SIZE + CI_BLOCKIO_BUFFER_SIZE)
 
 #define VCO1_BASE           (0xC0)
 #define VCO1_CONTROL        (VCO1_BASE + 0x00)
-#define VCO1_DATA           (VCO1_BASE + 0x04)  // 24 Bit
-#define VCO1_CONTROL_WRITE  (0x00000001)   // 1 = Trigger write, resets when done
-#define VCO1_CONTROL_CE     (0x00000002)   // 0 = Put VCO into power down
-#define VCO1_CONTROL_MUXOUT (0x00000004)   // Muxout from VCO (usually = Lock)
+#define VCO1_DATA           (VCO1_BASE + 0x04)  /* 24 Bit */
+/* 1 = Trigger write, resets when done */
+#define VCO1_CONTROL_WRITE  (0x00000001)
+/* 0 = Put VCO into power down */
+#define VCO1_CONTROL_CE     (0x00000002)
+/* Muxout from VCO (usually = Lock) */
+#define VCO1_CONTROL_MUXOUT (0x00000004)
 
 #define VCO2_BASE           (0xC8)
 #define VCO2_CONTROL        (VCO2_BASE + 0x00)
-#define VCO2_DATA           (VCO2_BASE + 0x04)  // 24 Bit
-#define VCO2_CONTROL_WRITE  (0x00000001)   // 1 = Trigger write, resets when done
-#define VCO2_CONTROL_CE     (0x00000002)   // 0 = Put VCO into power down
-#define VCO2_CONTROL_MUXOUT (0x00000004)   // Muxout from VCO (usually = Lock)
+#define VCO2_DATA           (VCO2_BASE + 0x04)  /* 24 Bit */
+/* 1 = Trigger write, resets when done */
+#define VCO2_CONTROL_WRITE  (0x00000001)
+/* 0 = Put VCO into power down */
+#define VCO2_CONTROL_CE     (0x00000002)
+/* Muxout from VCO (usually = Lock) */
+#define VCO2_CONTROL_MUXOUT (0x00000004)
 
 #define VCO3_BASE           (0xD0)
 #define VCO3_CONTROL        (VCO3_BASE + 0x00)
-#define VCO3_DATA           (VCO3_BASE + 0x04)  // 32 Bit
-#define VCO3_CONTROL_WRITE  (0x00000001)   // 1 = Trigger write, resets when done
-#define VCO3_CONTROL_CE     (0x00000002)   // 0 = Put VCO into power down
-#define VCO3_CONTROL_MUXOUT (0x00000004)   // Muxout from VCO (usually = Lock)
+#define VCO3_DATA           (VCO3_BASE + 0x04)  /* 32 Bit */
+/* 1 = Trigger write, resets when done */
+#define VCO3_CONTROL_WRITE  (0x00000001)
+/* 0 = Put VCO into power down */
+#define VCO3_CONTROL_CE     (0x00000002)
+/* Muxout from VCO (usually = Lock) */
+#define VCO3_CONTROL_MUXOUT (0x00000004)
 
 #define RF_ATTENUATOR   (0xD8)
-//  0x00 =  0 dB
-//  0x01 =  1 dB
-//    ... 
-//  0x1F = 31 dB
+/*  0x00 =  0 dB
+    0x01 =  1 dB
+      ...
+    0x1F = 31 dB
+*/
 
 #define RF_POWER        (0xE0)
 #define RF_POWER_BASE       (0xE0)
@@ -274,12 +283,13 @@
 #define RF_POWER_CONTROL_VALID     (0x00000500)
 
 
-// --------------------------------------------------------------------------
-//  Output control
+/* --------------------------------------------------------------------------
+   Output control
+*/
 
 #define IQOUTPUT_BASE           (0x240)
 #define IQOUTPUT_CONTROL        (IQOUTPUT_BASE + 0x00)
-#define IQOUTPUT_CONTROL2       (IQOUTPUT_BASE + 0x04)    
+#define IQOUTPUT_CONTROL2       (IQOUTPUT_BASE + 0x04)
 #define IQOUTPUT_PEAK_DETECTOR  (IQOUTPUT_BASE + 0x08)
 #define IQOUTPUT_POSTSCALER     (IQOUTPUT_BASE + 0x0C)
 #define IQOUTPUT_PRESCALER      (IQOUTPUT_BASE + 0x10)
@@ -296,7 +306,7 @@
 #define IQOUTPUT_EQUALIZER_9    (IQOUTPUT_BASE + 0x38)
 #define IQOUTPUT_EQUALIZER_10   (IQOUTPUT_BASE + 0x3C)
 
-#define IQOUTPUT_EQUALIZER(i)   (IQOUTPUT_EQUALIZER_0 + (i) * 4 )
+#define IQOUTPUT_EQUALIZER(i)   (IQOUTPUT_EQUALIZER_0 + (i) * 4)
 
 #define IQOUTPUT_CONTROL_RESET              (0x00000001)
 #define IQOUTPUT_CONTROL_ENABLE             (0x00000002)
@@ -305,8 +315,7 @@
 #define IQOUTPUT_CONTROL_BYPASS_EQUALIZER   (0x00000010)
 
 
-// --------------------------------------------------------------------------
-//
+/* Modulator Base */
 
 #define MODULATOR_BASE          (0x200)
 #define MODULATOR_CONTROL         (MODULATOR_BASE)
@@ -314,16 +323,15 @@
 #define MODULATOR_IQTABLE_INDEX   (MODULATOR_BASE+8)
 #define MODULATOR_IQTABLE_DATA    (MODULATOR_BASE+12)
 
-#define MODULATOR_IQTABLE_INDEX_CHANNEL_MASK  ( 0x000F0000 )
-#define MODULATOR_IQTABLE_INDEX_IQ_MASK       ( 0x00008000 )
-#define MODULATOR_IQTABLE_INDEX_ADDRESS_MASK  ( 0x000007FF )
-#define MODULATOR_IQTABLE_INDEX_SEL_I         ( 0x00000000 )
-#define MODULATOR_IQTABLE_INDEX_SEL_Q         ( MODULATOR_IQTABLE_INDEX_IQ_MASK )
+#define MODULATOR_IQTABLE_INDEX_CHANNEL_MASK  (0x000F0000)
+#define MODULATOR_IQTABLE_INDEX_IQ_MASK       (0x00008000)
+#define MODULATOR_IQTABLE_INDEX_ADDRESS_MASK  (0x000007FF)
+#define MODULATOR_IQTABLE_INDEX_SEL_I         (0x00000000)
+#define MODULATOR_IQTABLE_INDEX_SEL_Q     (MODULATOR_IQTABLE_INDEX_IQ_MASK)
 #define MODULATOR_IQTABLE_SIZE    (2048)
 
 
-// --------------------------------------------------------------------------
-// Modulator Channels
+/* Modulator Channels */
 
 #define CHANNEL_BASE                (0x400)
 #define CHANNEL_CONTROL(i)          (CHANNEL_BASE + (i) * 64 + 0x00)
@@ -362,19 +370,19 @@
 /* OCTONET */
 
 #define ETHER_BASE       (0x100)
-#define ETHER_CONTROL    (ETHER_BASE + 0x00) 
-#define ETHER_LENGTH     (ETHER_BASE + 0x04) 
+#define ETHER_CONTROL    (ETHER_BASE + 0x00)
+#define ETHER_LENGTH     (ETHER_BASE + 0x04)
 
 #define RTP_MASTER_BASE      (0x120)
-#define RTP_MASTER_CONTROL          (RTP_MASTER_BASE + 0x00) 
-#define RTP_RTCP_INTERRUPT          (RTP_MASTER_BASE + 0x04) 
-#define RTP_MASTER_RTCP_SETTINGS    (RTP_MASTER_BASE + 0x0c) 
+#define RTP_MASTER_CONTROL          (RTP_MASTER_BASE + 0x00)
+#define RTP_RTCP_INTERRUPT          (RTP_MASTER_BASE + 0x04)
+#define RTP_MASTER_RTCP_SETTINGS    (RTP_MASTER_BASE + 0x0c)
 
 #define STREAM_BASE       (0x400)
-#define STREAM_CONTROL(i)        (STREAM_BASE + (i) * 0x20 + 0x00) 
-#define STREAM_RTP_PACKET(i)        (STREAM_BASE + (i) * 0x20 + 0x04) 
-#define STREAM_RTCP_PACKET(i)       (STREAM_BASE + (i) * 0x20 + 0x08) 
-#define STREAM_RTP_SETTINGS(i)      (STREAM_BASE + (i) * 0x20 + 0x0c) 
+#define STREAM_CONTROL(i)        (STREAM_BASE + (i) * 0x20 + 0x00)
+#define STREAM_RTP_PACKET(i)        (STREAM_BASE + (i) * 0x20 + 0x04)
+#define STREAM_RTCP_PACKET(i)       (STREAM_BASE + (i) * 0x20 + 0x08)
+#define STREAM_RTP_SETTINGS(i)      (STREAM_BASE + (i) * 0x20 + 0x0c)
 #define STREAM_INSERT_PACKET(i)     (STREAM_BASE + (i) * 0x20 + 0x10)
 
 #define STREAM_PACKET_OFF(i) ((i) * 0x200)

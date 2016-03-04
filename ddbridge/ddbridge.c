@@ -2,6 +2,7 @@
  * ddbridge.c: Digital Devices PCIe bridge driver
  *
  * Copyright (C) 2010-2013 Digital Devices GmbH
+ *                         Ralph Metzler <rmetzler@digitaldevices.de>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -21,9 +22,9 @@
  * Or, point your browser to http://www.gnu.org/copyleft/gpl.html
  */
 
-//#define DDB_ALT_DMA
+/*#define DDB_ALT_DMA*/
 #define DDB_USE_WORK
-//#define DDB_TEST_THREADED
+/*#define DDB_TEST_THREADED*/
 #undef CONFIG_PCI_MSI
 
 #include "ddbridge.h"
@@ -44,7 +45,9 @@ static struct workqueue_struct *ddb_wq;
 
 static int adapter_alloc;
 module_param(adapter_alloc, int, 0444);
-MODULE_PARM_DESC(adapter_alloc, "0-one adapter per io, 1-one per tab with io, 2-one per tab, 3-one for all");
+MODULE_PARM_DESC(adapter_alloc,
+		 "0-one adapter per io, 1-one per tab with io, "
+		 "2-one per tab, 3-one for all");
 
 #include "ddbridge-core.c"
 
@@ -85,10 +88,10 @@ static void __devexit ddb_remove(struct pci_dev *pdev)
 	pci_disable_device(pdev);
 }
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,8,0))
-#define __devinit 
-#define __devinitdata 
-#endif 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0))
+#define __devinit
+#define __devinitdata
+#endif
 
 static int __devinit ddb_probe(struct pci_dev *pdev,
 			       const struct pci_device_id *id)
@@ -108,30 +111,35 @@ static int __devinit ddb_probe(struct pci_dev *pdev,
 	dev->pdev = pdev;
 	dev->dev = &pdev->dev;
 	pci_set_drvdata(pdev, dev);
-	dev->id = id;
+
+	dev->ids.vendor = id->vendor;
+	dev->ids.device = id->device;
+	dev->ids.subvendor = id->subvendor;
+	dev->ids.subdevice = id->subdevice;
+
 	dev->info = (struct ddb_info *) id->driver_data;
-	printk(KERN_INFO "DDBridge driver detected: %s\n", dev->info->name);
+	pr_info("DDBridge driver detected: %s\n", dev->info->name);
 
 	dev->regs_len = pci_resource_len(dev->pdev, 0);
 	dev->regs = ioremap(pci_resource_start(dev->pdev, 0),
 			    pci_resource_len(dev->pdev, 0));
 	if (!dev->regs) {
-		printk("DDBridge: not enough memory for register map\n");
+		pr_err("DDBridge: not enough memory for register map\n");
 		stat = -ENOMEM;
 		goto fail;
 	}
 	if (ddbreadl(dev, 0) == 0xffffffff) {
-		printk("DDBridge: cannot read registers\n");
+		pr_err("DDBridge: cannot read registers\n");
 		stat = -ENODEV;
 		goto fail;
 	}
 
-	dev->hwid = ddbreadl(dev, 0);
-	dev->regmapid = ddbreadl(dev, 4);
-	
-	printk(KERN_INFO "HW %08x REGMAP %08x\n",
-	       dev->hwid, dev->regmapid);
-	
+	dev->ids.hwid = ddbreadl(dev, 0);
+	dev->ids.regmapid = ddbreadl(dev, 4);
+
+	pr_info("HW %08x REGMAP %08x\n",
+		dev->ids.hwid, dev->ids.regmapid);
+
 	ddbwritel(dev, 0x00000000, INTERRUPT_ENABLE);
 	ddbwritel(dev, 0x00000000, MSI1_ENABLE);
 	ddbwritel(dev, 0x00000000, MSI2_ENABLE);
@@ -146,12 +154,12 @@ static int __devinit ddb_probe(struct pci_dev *pdev,
 		stat = pci_enable_msi_block(dev->pdev, 2);
 		if (stat == 0) {
 			dev->msi = 1;
-			printk("DDBrige using 2 MSI interrupts\n");
+			pr_info("DDBrige using 2 MSI interrupts\n");
 		}
-		if (stat == 1) 
+		if (stat == 1)
 			stat = pci_enable_msi(dev->pdev);
 		if (stat < 0) {
-			printk(KERN_INFO ": MSI not available.\n");
+			pr_info(": MSI not available.\n");
 		} else {
 			irq_flag = 0;
 			dev->msi++;
@@ -168,15 +176,15 @@ static int __devinit ddb_probe(struct pci_dev *pdev,
 		if (stat < 0) {
 			free_irq(dev->pdev->irq, dev);
 			goto fail0;
-		} 
+		}
 	} else {
 #ifdef DDB_TEST_THREADED
-		stat = request_threaded_irq(dev->pdev->irq, irq_handler, 
+		stat = request_threaded_irq(dev->pdev->irq, irq_handler,
 					    irq_thread,
-					    irq_flag, 
+					    irq_flag,
 					    "ddbridge", (void *) dev);
 #else
-		stat = request_irq(dev->pdev->irq, irq_handler, 
+		stat = request_irq(dev->pdev->irq, irq_handler,
 				   irq_flag, "ddbridge", (void *) dev);
 #endif
 		if (stat < 0)
@@ -185,8 +193,8 @@ static int __devinit ddb_probe(struct pci_dev *pdev,
 	ddbwritel(dev, 0, DMA_BASE_READ);
 	if (dev->info->type != DDB_MOD)
 		ddbwritel(dev, 0, DMA_BASE_WRITE);
-	
-	//ddbwritel(dev, 0xffffffff, INTERRUPT_ACK);
+
+	/*ddbwritel(dev, 0xffffffff, INTERRUPT_ACK);*/
 	if (dev->msi == 2) {
 		ddbwritel(dev, 0x0fffff00, INTERRUPT_ENABLE);
 		ddbwritel(dev, 0x0000000f, MSI1_ENABLE);
@@ -198,7 +206,7 @@ static int __devinit ddb_probe(struct pci_dev *pdev,
 		goto fail1;
 	ddb_ports_init(dev);
 	if (ddb_buffers_alloc(dev) < 0) {
-		printk(KERN_INFO ": Could not allocate buffer memory\n");
+		pr_info(": Could not allocate buffer memory\n");
 		goto fail2;
 	}
 	if (ddb_ports_attach(dev) < 0)
@@ -218,34 +226,34 @@ static int __devinit ddb_probe(struct pci_dev *pdev,
 
 fail3:
 	ddb_ports_detach(dev);
-	printk(KERN_ERR "fail3\n");
+	pr_err("fail3\n");
 	ddb_ports_release(dev);
 fail2:
-	printk(KERN_ERR "fail2\n");
+	pr_err("fail2\n");
 	ddb_buffers_free(dev);
 	ddb_i2c_release(dev);
 fail1:
-	printk(KERN_ERR "fail1\n");
+	pr_err("fail1\n");
 	ddbwritel(dev, 0, INTERRUPT_ENABLE);
 	ddbwritel(dev, 0, MSI1_ENABLE);
 	free_irq(dev->pdev->irq, dev);
-	if (dev->msi == 2) 
+	if (dev->msi == 2)
 		free_irq(dev->pdev->irq + 1, dev);
 fail0:
-	printk(KERN_ERR "fail0\n");
+	pr_err("fail0\n");
 	if (dev->msi)
 		pci_disable_msi(dev->pdev);
 fail:
-	printk(KERN_ERR "fail\n");
+	pr_err("fail\n");
 	ddb_unmap(dev);
 	pci_set_drvdata(pdev, 0);
 	pci_disable_device(pdev);
 	return -1;
 }
 
-/******************************************************************************/
-/******************************************************************************/
-/******************************************************************************/
+/****************************************************************************/
+/****************************************************************************/
+/****************************************************************************/
 
 struct ddb_regset octopus_i2c = {
 	.base = 0x80,
@@ -254,13 +262,13 @@ struct ddb_regset octopus_i2c = {
 };
 
 static struct ddb_regmap octopus_map = {
-//	.i2c = octopus_i2c,
+/*	.i2c = octopus_i2c, */
 };
 
 static struct ddb_info ddb_none = {
 	.type     = DDB_NONE,
 	.name     = "unknown Digital Devices PCIe card, install newer driver",
-//	.regmap   = octopus_map,
+/*	.regmap   = octopus_map, */
 };
 
 static struct ddb_info ddb_octopus = {
@@ -365,7 +373,7 @@ static struct ddb_info ddb_octonet = {
 	.subvendor   = _subvend, .subdevice = _subdev, \
 	.driver_data = (unsigned long)&_driverdata }
 
-static const struct pci_device_id ddb_id_tbl[] __devinitdata = {
+static const struct pci_device_id ddb_id_tbl[] __devinitconst = {
 	DDB_ID(DDVID, 0x0002, DDVID, 0x0001, ddb_octopus),
 	DDB_ID(DDVID, 0x0003, DDVID, 0x0001, ddb_octopus),
 	DDB_ID(DDVID, 0x0005, DDVID, 0x0004, ddb_octopusv3),
@@ -398,8 +406,7 @@ static __init int module_init_ddbridge(void)
 {
 	int stat = -1;
 
-	printk(KERN_INFO "Digital Devices PCIE bridge driver 0.9.9, "
-	       "Copyright (C) 2010-13 Digital Devices GmbH\n");
+	pr_info("Digital Devices PCIE bridge driver 0.9.10, Copyright (C) 2010-13 Digital Devices GmbH\n");
 	if (ddb_class_create() < 0)
 		return -1;
 	ddb_wq = create_workqueue("ddbridge");
@@ -429,4 +436,4 @@ module_exit(module_exit_ddbridge);
 MODULE_DESCRIPTION("Digital Devices PCIe Bridge");
 MODULE_AUTHOR("Ralph Metzler, Metzler Brothers Systementwicklung");
 MODULE_LICENSE("GPL");
-MODULE_VERSION("0.9.9");
+MODULE_VERSION("0.9.12");

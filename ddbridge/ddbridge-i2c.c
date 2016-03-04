@@ -2,6 +2,7 @@
  * ddbridge-i2c.c: Digital Devices bridge i2c driver
  *
  * Copyright (C) 2010-2013 Digital Devices GmbH
+ *                         Ralph Metzler <rmetzler@digitaldevices.de>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -23,7 +24,8 @@
 
 static int i2c_write(struct i2c_adapter *adap, u8 adr, u8 *data, int len)
 {
-	struct i2c_msg msg = {.addr = adr, .flags = 0, .buf = data, .len = len};
+	struct i2c_msg msg = {.addr = adr, .flags = 0,
+			      .buf = data, .len = len};
 
 	return (i2c_transfer(adap, &msg, 1) == 1) ? 0 : -1;
 }
@@ -45,7 +47,7 @@ static int i2c_read_regs(struct i2c_adapter *adapter,
 	return (i2c_transfer(adapter, msgs, 2) == 2) ? 0 : -1;
 }
 
-static int i2c_read_regs16(struct i2c_adapter *adapter, 
+static int i2c_read_regs16(struct i2c_adapter *adapter,
 			   u8 adr, u16 reg, u8 *val, u8 len)
 {
 	u8 reg16[2] = { reg >> 8, reg };
@@ -98,17 +100,15 @@ static int ddb_i2c_cmd(struct ddb_i2c *i2c, u32 adr, u32 cmd)
 	int stat;
 	u32 val;
 
-	//i2c->done = 0;
 	ddbwritel(dev, (adr << 9) | cmd, i2c->regs + I2C_COMMAND);
-	//stat = wait_event_timeout(i2c->wq, i2c->done == 1, HZ);
 	stat = wait_for_completion_timeout(&i2c->completion, HZ);
 	if (stat <= 0) {
-		printk(KERN_ERR "DDBridge I2C timeout, card %d, port %d\n",
+		pr_err("DDBridge I2C timeout, card %d, port %d\n",
 		       dev->nr, i2c->nr);
 #ifdef CONFIG_PCI_MSI
 		{ /* MSI debugging*/
 			u32 istat = ddbreadl(dev, INTERRUPT_STATUS);
-			printk(KERN_ERR "DDBridge IRS %08x\n", istat);
+			dev_err(dev->dev, "DDBridge IRS %08x\n", istat);
 			ddbwritel(dev, istat, INTERRUPT_ACK);
 		}
 #endif
@@ -137,18 +137,18 @@ static int ddb_i2c_master_xfer(struct i2c_adapter *adapter,
 			  i2c->regs + I2C_TASKLENGTH);
 		if (!ddb_i2c_cmd(i2c, addr, 1)) {
 			memcpy_fromio(msg[1].buf,
-				      dev->regs + I2C_TASKMEM_BASE + i2c->rbuf,
+				      dev->regs + I2C_TASKMEM_BASE +
+				      i2c->rbuf,
 				      msg[1].len);
 			return num;
 		}
 	}
 	if (num == 1 && !(msg[0].flags & I2C_M_RD)) {
-		ddbcpyto(dev, I2C_TASKMEM_BASE + i2c->wbuf, 
+		ddbcpyto(dev, I2C_TASKMEM_BASE + i2c->wbuf,
 			 msg[0].buf, msg[0].len);
 		ddbwritel(dev, msg[0].len, i2c->regs + I2C_TASKLENGTH);
-		if (!ddb_i2c_cmd(i2c, addr, 2)) {
+		if (!ddb_i2c_cmd(i2c, addr, 2))
 			return num;
-		}
 	}
 	if (num == 1 && (msg[0].flags & I2C_M_RD)) {
 		ddbwritel(dev, msg[0].len << 16, i2c->regs + I2C_TASKLENGTH);
@@ -161,6 +161,23 @@ static int ddb_i2c_master_xfer(struct i2c_adapter *adapter,
 	return -EIO;
 }
 
+#if 0
+static int ddb_i2c_master_xfer(struct i2c_adapter *adapter,
+			       struct i2c_msg msg[], int num)
+{
+	struct ddb_i2c *i2c = (struct ddb_i2c *) i2c_get_adapdata(adapter);
+	struct ddb *dev = i2c->dev;
+	int ret;
+
+	if (dev->info->type != DDB_OCTONET || i2c->nr == 0 || i2c->nr == 3)
+		return ddb_i2c_master_xfer_locked(adapter, msg, num);
+
+	mutex_lock(&dev->octonet_i2c_lock);
+	ret = ddb_i2c_master_xfer_locked(adapter, msg, num);
+	mutex_unlock(&dev->octonet_i2c_lock);
+	return ret;
+}
+#endif
 
 static u32 ddb_i2c_functionality(struct i2c_adapter *adap)
 {
@@ -187,10 +204,8 @@ static void ddb_i2c_release(struct ddb *dev)
 
 static void i2c_handler(unsigned long priv)
 {
-	struct ddb_i2c *i2c = (struct ddb_i2c *) priv; 
+	struct ddb_i2c *i2c = (struct ddb_i2c *) priv;
 
-	//i2c->done = 1;
-	//wake_up(&i2c->wq);
 	complete(&i2c->completion);
 }
 
@@ -199,7 +214,7 @@ static int ddb_i2c_init(struct ddb *dev)
 	int i, j, stat = 0;
 	struct ddb_i2c *i2c;
 	struct i2c_adapter *adap;
-	
+
 	for (i = 0; i < dev->info->i2c_num; i++) {
 		i2c = &dev->i2c[i];
 		dev->handler[i] = i2c_handler;
@@ -212,7 +227,6 @@ static int ddb_i2c_init(struct ddb *dev)
 		ddbwritel(dev, I2C_SPEED_100, i2c->regs + I2C_TIMING);
 		ddbwritel(dev, (i2c->rbuf << 16) | i2c->wbuf,
 			  i2c->regs + I2C_TASKADDRESS);
-		//init_waitqueue_head(&i2c->wq);
 		init_completion(&i2c->completion);
 
 		adap = &i2c->adap;

@@ -2,6 +2,7 @@
  * ddbridge.h: Digital Devices PCIe bridge driver
  *
  * Copyright (C) 2010-2013 Digital Devices GmbH
+ *                         Ralph Metzler <rmetzler@digitaldevices.de>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -26,9 +27,10 @@
 
 #include <linux/version.h>
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,8,0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0))
 #define __devexit
 #define __devinit
+#define __devinitconst 
 #endif
 
 #include <linux/module.h>
@@ -58,9 +60,9 @@
 #include <linux/i2c.h>
 #include <linux/mutex.h>
 #include <asm/dma.h>
-#include <asm/io.h>
 #include <asm/irq.h>
-#include <asm/uaccess.h>
+#include <linux/io.h>
+#include <linux/uaccess.h>
 
 #include <linux/dvb/ca.h>
 #include <linux/socket.h>
@@ -100,6 +102,18 @@ struct ddb_regmap {
 	struct ddb_regset pid_filter;
 };
 
+struct ddb_ids {
+	u16 vendor;
+	u16 device;
+	u16 subvendor;
+	u16 subdevice;
+
+	u32 hwid;
+	u32 regmapid;
+	u32 devid;
+	u32 mac;
+};
+
 struct ddb_info {
 	int   type;
 #define DDB_NONE         0
@@ -118,7 +132,7 @@ struct ddb_info {
 };
 
 
-/* DMA_SIZE MUST be smaller than 256k and 
+/* DMA_SIZE MUST be smaller than 256k and
    MUST be divisible by 188 and 128 !!! */
 
 #define DMA_MAX_BUFS 32      /* hardware table limit */
@@ -186,31 +200,12 @@ struct ddb_io {
 	struct ddb_port       *port;
 	u32                    nr;
 	struct ddb_dma        *dma;
-//	struct ddb_io         *redirect;
 	struct ddb_io         *redo;
 	struct ddb_io         *redi;
 };
 
-#if 0
-struct ddb_input {
-	struct ddb_port       *port;
-	u32                    nr;
-	struct ddb_dma        *dma;
-	struct ddb_output     *redo;
-	struct ddb_input      *redi;
-};
-
-struct ddb_output {
-	struct ddb_port       *port;
-	u32                    nr;
-	struct ddb_dma        *dma;
-	struct ddb_output     *redo;
-	struct ddb_input      *redi;
-};
-#else
 #define ddb_output ddb_io
 #define ddb_input ddb_io
-#endif
 
 struct ddb_i2c {
 	struct ddb            *dev;
@@ -219,8 +214,6 @@ struct ddb_i2c {
 	u32                    regs;
 	u32                    rbuf;
 	u32                    wbuf;
-//	int                    done;
-//	wait_queue_head_t      wq;
 	struct completion      completion;
 };
 
@@ -312,7 +305,7 @@ struct mod_state {
 #define DDB_NS_MAX 15
 
 struct ddb_ns {
-	struct ddb_input      *input; 
+	struct ddb_input      *input;
 	int                    nr;
 	int                    fe;
 	u32                    rtcp_udplen;
@@ -326,7 +319,7 @@ struct ddb {
 	struct pci_dev        *pdev;
 	struct platform_device *pfdev;
 	struct device         *dev;
-	const struct pci_device_id *id;
+	struct ddb_ids         ids;
 	struct ddb_info       *info;
 	int                    msi;
 	struct workqueue_struct *wq;
@@ -355,11 +348,6 @@ struct ddb {
 	u32                    ts_irq;
 	u32                    i2c_irq;
 
-	u32                    hwid;
-	u32                    regmapid;
-	u32                    mac;
-	u32                    devid;
-
 	int                    ns_num;
 	struct ddb_ns          ns[DDB_NS_MAX];
 	struct mutex           mutex;
@@ -369,10 +357,12 @@ struct ddb {
 
 	struct mod_base        mod_base;
 	struct mod_state       mod[10];
+
+	struct mutex           octonet_i2c_lock;
 };
 
 
-/******************************************************************************/
+/****************************************************************************/
 
 static inline void ddbwriteb(struct ddb *dev, u32 val, u32 adr)
 {
@@ -409,9 +399,9 @@ static inline u32 ddbreadb(struct ddb *dev, u32 adr)
 	memset_io((char *) (_dev->regs + (_adr)), (_val), (_count))
 
 
-/******************************************************************************/
-/******************************************************************************/
-/******************************************************************************/
+/****************************************************************************/
+/****************************************************************************/
+/****************************************************************************/
 
 #define dd_uint8    u8
 #define dd_uint16   u16
@@ -431,11 +421,11 @@ struct DDMOD_FLASH_DS {
 	dd_uint16   FrequencyFactor;
 	dd_int16    PhaseCorr;              /* TBD        */
 	dd_uint32   Control2;
-	dd_uint16   PostScaleI;   
+	dd_uint16   PostScaleI;
 	dd_uint16   PostScaleQ;
 	dd_uint16   PreScale;
 	dd_int16    EQTap[11];
-	dd_uint16   FlatStart;   
+	dd_uint16   FlatStart;
 	dd_uint16   FlatEnd;
 	dd_uint32   FlashOffsetPrecalculatedIQTables;       /* 0 = none */
 	dd_uint8    Reserved[28];
@@ -446,16 +436,16 @@ struct DDMOD_FLASH {
 	dd_uint32   Magic;
 	dd_uint16   Version;
 	dd_uint16   DataSets;
-	
+
 	dd_uint16   VCORefFrequency;    /* MHz */
 	dd_uint16   VCO1Frequency;      /* MHz */
 	dd_uint16   VCO2Frequency;      /* MHz */
-	
+
 	dd_uint16   DACAux1;    /* TBD */
 	dd_uint16   DACAux2;    /* TBD */
-	
+
 	dd_uint8    Reserved1[238];
-	
+
 	struct DDMOD_FLASH_DS DataSet[1];
 };
 

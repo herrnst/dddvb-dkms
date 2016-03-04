@@ -1145,13 +1145,12 @@ static int dvb_ca_en50221_thread(void *data)
 					}
 
 					printk("dvb_ca adapter %d: DVB CAM link initialisation failed :(\n", ca->dvbdev->adapter->num);
-#if 1
+#if 0
 					ca->slot_info[slot].slot_state = DVB_CA_SLOTSTATE_INVALID;
-					dvb_ca_en50221_thread_update_delay(ca);
 #else
 					ca->slot_info[slot].slot_state = DVB_CA_SLOTSTATE_UNINITIALISED;
-					dvb_ca_en50221_thread_update_delay(ca);
 #endif
+					dvb_ca_en50221_thread_update_delay(ca);
 					break;
 				}
 

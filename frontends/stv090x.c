@@ -39,6 +39,8 @@
  #define ERRCTRL1_DVBS1 0x76
 #define ERRCTRL1_DVBS2 0x67
 
+#define STOP_DEMOD 1
+
 static unsigned int verbose;
 module_param(verbose, int, 0644);
 
@@ -3770,7 +3772,11 @@ static int stv090x_set_tone(struct dvb_frontend *fe, fe_sec_tone_mode_t tone)
 {
 	struct stv090x_state *state = fe->demodulator_priv;
 	u32 reg;
-
+	
+#if STOP_DEMOD
+	if (STV090x_WRITE_DEMOD(state, DMDISTATE, 0x5c) < 0) /* Demod stop */
+		goto err;
+#endif
 	reg = STV090x_READ_DEMOD(state, DISTXCTL);
 	switch (tone) {
 	case SEC_TONE_ON:
@@ -3811,6 +3817,10 @@ static int stv090x_send_diseqc_msg(struct dvb_frontend *fe, struct dvb_diseqc_ma
 	u32 reg, idle = 0, fifo_full = 1;
 	int i;
 
+#if STOP_DEMOD
+	if (STV090x_WRITE_DEMOD(state, DMDISTATE, 0x5c) < 0) /* Demod stop */
+		goto err;
+#endif
 	reg = STV090x_READ_DEMOD(state, DISTXCTL);
 
 	STV090x_SETFIELD_Px(reg, DISTX_MODE_FIELD,
@@ -3863,6 +3873,10 @@ static int stv090x_send_diseqc_burst(struct dvb_frontend *fe, fe_sec_mini_cmd_t 
 	u8 mode, value;
 	int i;
 
+#if STOP_DEMOD
+	if (STV090x_WRITE_DEMOD(state, DMDISTATE, 0x5c) < 0) /* Demod stop */
+		goto err;
+#endif
 	reg = STV090x_READ_DEMOD(state, DISTXCTL);
 
 	if (burst == SEC_MINI_A) {

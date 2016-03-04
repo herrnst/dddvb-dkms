@@ -36,7 +36,7 @@
 
 #include "cxd2099.h"
 
-//#define BUFFER_MODE 1
+/*#define BUFFER_MODE 1*/
 
 #define MAX_BUFFER_SIZE 248
 
@@ -242,6 +242,7 @@ static int write_reg(struct cxd *ci, u8 reg, u8 val)
 	return write_regm(ci, reg, val, 0xff);
 }
 
+#ifdef BUFFER_MODE
 static int write_block(struct cxd *ci, u8 adr, u8 *data, int n)
 {
 	int status = 0;
@@ -257,6 +258,7 @@ static int write_block(struct cxd *ci, u8 adr, u8 *data, int n)
 	}
 	return status;
 }
+#endif
 
 static void set_mode(struct cxd *ci, int mode)
 {
@@ -325,8 +327,10 @@ static int init(struct cxd *ci)
 		CHK_ERROR(write_reg(ci, 0x08, 0x28));
 		CHK_ERROR(write_reg(ci, 0x14, 0x20));
 
-		CHK_ERROR(write_reg(ci, 0x0A, 0xA7)); /* TOSTRT = 8, Mode B (gated clock), falling Edge, Serial, POL=HIGH, MSB */
-
+		/* TOSTRT = 8, Mode B (gated clock), falling Edge,
+		   Serial, POL=HIGH, MSB */
+		CHK_ERROR(write_reg(ci, 0x0A, 0xA7)); 
+		
 		CHK_ERROR(write_reg(ci, 0x0B, 0x33));
 		CHK_ERROR(write_reg(ci, 0x0C, 0x33));
 
@@ -336,10 +340,11 @@ static int init(struct cxd *ci)
 		CHK_ERROR(write_reg(ci, 0x17,ci->clk_reg_f));
 
 		if (ci->cfg.clock_mode == 2) {
-			u32 reg = ((ci->cfg.bitrate << 13) + 71999) / 72000; // bitrate*2^13/ 72000
-
+			/* bitrate*2^13/ 72000 */
+			u32 reg = ((ci->cfg.bitrate << 13) + 71999) / 72000;
+			
 			if (ci->cfg.polarity) {
-				CHK_ERROR(write_reg(ci, 0x09, 0x6f)); /* mode D */
+				CHK_ERROR(write_reg(ci, 0x09, 0x6f)); /* D */
 			} else {
 				CHK_ERROR(write_reg(ci, 0x09, 0x6d));
 			}
@@ -348,7 +353,7 @@ static int init(struct cxd *ci)
 			CHK_ERROR(write_reg(ci, 0x22, reg & 0xff));
 		} else if (ci->cfg.clock_mode == 1) {
 			if (ci->cfg.polarity) {
-				CHK_ERROR(write_reg(ci, 0x09, 0x6f)); /* mode D */
+				CHK_ERROR(write_reg(ci, 0x09, 0x6f)); /* D */
 			} else {
 				CHK_ERROR(write_reg(ci, 0x09, 0x6d));
 			}
@@ -357,11 +362,10 @@ static int init(struct cxd *ci)
 			CHK_ERROR(write_reg(ci, 0x22, 0x02));
 		} else {
 			if (ci->cfg.polarity) {
-				CHK_ERROR(write_reg(ci, 0x09, 0x4f)); /* mode C */
+				CHK_ERROR(write_reg(ci, 0x09, 0x4f)); /* C */
 			} else {
 				CHK_ERROR(write_reg(ci, 0x09, 0x4d));
 			}
-			
 			CHK_ERROR(write_reg(ci, 0x20, 0x28));
 			CHK_ERROR(write_reg(ci, 0x21, 0x00));
 			CHK_ERROR(write_reg(ci, 0x22, 0x07));
@@ -408,7 +412,7 @@ static int read_attribute_mem(struct dvb_ca_en50221 *ca,
 	set_mode(ci, 1);
 	read_pccard(ci, address, &val, 1);
 	mutex_unlock(&ci->lock);
-	//printk("%02x:%02x\n", address,val);
+	/*printk("%02x:%02x\n", address,val);*/
 	return val;
 #endif
 }
@@ -471,7 +475,7 @@ static int slot_reset(struct dvb_ca_en50221 *ca, int slot)
 	cam_mode(ci, 0);
 	write_reg(ci, 0x00, 0x21);
 	write_reg(ci, 0x06, 0x1F);
-	//msleep(300);
+	/*msleep(300);*/
 	write_reg(ci, 0x00, 0x31);
 	write_regm(ci, 0x20, 0x80, 0x80);
 	write_reg(ci, 0x03, 0x02);
@@ -548,10 +552,10 @@ static int campoll(struct cxd *ci)
 
 	if (istat & 0x40) {
 		ci->dr = 1;
-		//printk(KERN_INFO "DR\n");
+		/*printk(KERN_INFO "DR\n");*/
 	}
 	if (istat & 0x20) {
-		//printk(KERN_INFO "WC\n");
+		/*printk(KERN_INFO "WC\n");*/
 		ci->write_busy = 0;
 	}
 
@@ -634,6 +638,7 @@ static int read_data(struct dvb_ca_en50221* ca, int slot, u8 *ebuf, int ecount)
 	return len;
 }
 
+#ifdef BUFFER_MODE
 static int write_data(struct dvb_ca_en50221* ca, int slot, u8 *ebuf, int ecount)
 {
 	struct cxd *ci = ca->data;
@@ -649,6 +654,7 @@ static int write_data(struct dvb_ca_en50221* ca, int slot, u8 *ebuf, int ecount)
 	mutex_unlock(&ci->lock);
 	return ecount;
 }
+#endif
 
 static struct dvb_ca_en50221 en_templ = {
 	.read_attribute_mem  = read_attribute_mem,

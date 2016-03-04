@@ -52,6 +52,27 @@ and the bootstrap code which loads u-boot also does not contain error correction
 
 
 
+- SPI dataflash
+
+0x000000 - 0x003fff FPGA config data
+0x004000 - 0x005fff G45 bootstrap
+0x010000 - 0x0affff FPGA bitstream
+0x0b0000 - 0x15ffff G45 u-boot
+0x160000 - 0x1fefff FPGA golden image
+0x1ff000 - 0x1fffff FPGA jump to golden image
+
+
+- NAND flash
+
+0x00000000 - 0x0001ffff G45 bootstrap (fallback bootstrap if SPI corrupted, pull jumper to use)
+0x00020000 - 0x0007ffff G45 u-boot (fallback u-boot if SPI corrupted)
+0x00080000 - 0x0009ffff spare (e.g. for bigger u-boot)
+0x000a0000 - 0x000bffff G45 u-boot environment
+0x000c0000 - 0x000dffff G45 u-boot redundant environment
+0x000e0000 - 0x000fffff spare
+0x00100000 - 0x001fffff G45 Linux recovery
+0x02000000 - 0x0fffffff Linux UBI
+
 
 
 

@@ -1,6 +1,19 @@
-0.9.8 2013.05.05
+0.9.12 2014.02.17
+- support for SNR in XO2 and LED connected to XO2
 
-- 
+0.9.11 2014.02.04
+
+- kernel style cleanups
+- attr alloc fixes for modulator card
+
+0.9.10 2013.10.09 
+
+- Bugfixes CXD2843
+  support slice id
+
+0.9.9 2013.08.14
+
+- support for CXD2843 DVB-C/T/C2/T2 demod
 
 0.9.7 2013.04.15
 

@@ -9,6 +9,7 @@ struct cxd2843_cfg {
 	u32 ts_clock;
 };
 
-extern struct dvb_frontend *cxd2843_attach(struct i2c_adapter *i2c, struct cxd2843_cfg *cfg);
+extern struct dvb_frontend *cxd2843_attach(struct i2c_adapter *i2c,
+					   struct cxd2843_cfg *cfg);
 
 #endif
