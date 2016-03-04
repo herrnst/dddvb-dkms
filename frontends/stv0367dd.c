@@ -95,6 +95,8 @@ struct stv_state {
 	u8    m_OFDM_Modulation;   // 
 	u8    m_OFDM_FEC;          // 
 	u8    m_OFDM_Guard;
+
+	u32   ucblocks;
 };
 
 struct init_table {
@@ -1336,22 +1338,10 @@ static int OFDM_GetSignalToNoise(struct stv_state *state, s32 *pSignalToNoise)
 		//   361/362 Datasheet: snr = CHC_SNR/8 dB -> this looks best
 		*pSignalToNoise = ( (s32)CHC_SNR * 10) / 8;
 	}
+	printk("SNR %d\n", *pSignalToNoise);
 	return status;
 }
 
-static int GetSignalToNoise(struct stv_state *state, s32 *pSignalToNoise)
-{
-	*pSignalToNoise = 0;
-	switch(state->demod_state)
-	{
-        case QAMStarted:
-		return QAM_GetSignalToNoise(state, pSignalToNoise);
-        case OFDMStarted:
-		return OFDM_GetSignalToNoise(state, pSignalToNoise);
-	}
-
-    return 0;
-}
 
 static int DVBC_GetQuality(struct stv_state *state, s32 SignalToNoise, s32 *pQuality)
 {
@@ -1918,9 +1908,11 @@ static int read_ber(struct dvb_frontend *fe, u32 *ber)
 static int read_signal_strength(struct dvb_frontend *fe, u16 *strength)
 {
 	struct stv_state *state = fe->demodulator_priv;
-	u32 val;
 
-	*strength = val & 0xffff;;
+	if (fe->ops.tuner_ops.get_rf_strength)
+		fe->ops.tuner_ops.get_rf_strength(fe, strength);
+	else
+		*strength = 0;
 	return 0;
 }
 
@@ -1929,6 +1921,12 @@ static int read_snr(struct dvb_frontend *fe, u16 *snr)
 	struct stv_state *state = fe->demodulator_priv;
 	s32 snr2;
 
+	switch(state->demod_state) {
+        case QAMStarted:
+		return QAM_GetSignalToNoise(state, &snr2);
+        case OFDMStarted:
+		return OFDM_GetSignalToNoise(state, &snr);
+	}
 	*snr = snr2&0xffff;
 	return 0;
 }
@@ -1936,9 +1934,27 @@ static int read_snr(struct dvb_frontend *fe, u16 *snr)
 static int read_ucblocks(struct dvb_frontend *fe, u32 *ucblocks)
 {
 	struct stv_state *state = fe->demodulator_priv;
-	u16 err;
+	u32 errs;
+	u8 errl, errm, errh;
+	u8 val;
 	
-	*ucblocks = (u32) err;
+	switch(state->demod_state) {
+        case QAMStarted:
+		readreg(state, R367_QAM_RS_COUNTER_4, &errl);
+		readreg(state, R367_QAM_RS_COUNTER_5, &errm);
+		*ucblocks = (errm << 8) | errl;
+		break;
+        case OFDMStarted:
+		readreg(state, R367_OFDM_SFERRCNTH, &val);
+		if ((val & 0x80) == 0) {
+			readreg(state, R367_OFDM_ERRCNT1H, &errh);
+			readreg(state, R367_OFDM_ERRCNT1M, &errl);
+			readreg(state, R367_OFDM_ERRCNT1L, &errm);
+			state->ucblocks = (errh <<16) | (errm << 8) | errl;
+		}
+		*ucblocks = state->ucblocks;
+		break;
+	}
 	return 0;
 }
 
@@ -1988,7 +2004,7 @@ static enum dvbfe_algo algo(struct dvb_frontend *fe)
 
 static struct dvb_frontend_ops c_ops = {
 	.info = {
-		.name = "DRXK DVB-C",
+		.name = "STV0367 DVB-C",
 		.type = FE_QAM,
 		.frequency_stepsize = 62500,
 		.frequency_min = 47000000,
@@ -2021,7 +2037,7 @@ static struct dvb_frontend_ops c_ops = {
 
 static struct dvb_frontend_ops t_ops = {
 	.info = {
-		.name			= "DRXK DVB-T",
+		.name			= "STV0367 DVB-T",
 		.type			= FE_OFDM,
 		.frequency_min		= 47125000,
 		.frequency_max		= 865000000,

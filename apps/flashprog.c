@@ -24,6 +24,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <unistd.h>
+#include <getopt.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -33,6 +35,15 @@
 
 #define DDB_MAGIC 'd'
 
+struct ddb_id {
+	__u16 vendor;
+	__u16 device;
+	__u16 subvendor;
+	__u16 subdevice;
+	__u32 hw;
+	__u32 regmap;
+};
+
 struct ddb_flashio {
 	__u8 *write_buf;
 	__u32 write_len;
@@ -41,6 +52,7 @@ struct ddb_flashio {
 };
 
 #define IOCTL_DDB_FLASHIO  _IOWR(DDB_MAGIC, 0x00, struct ddb_flashio)
+#define IOCTL_DDB_ID       _IOR(DDB_MAGIC, 0x03, struct ddb_id)
 
 
 int flashio(int ddb, uint8_t *wbuf, uint32_t wlen, uint8_t *rbuf, uint32_t rlen)
@@ -91,21 +103,32 @@ int FlashDetect(int dev)
 	uint8_t Id[3];
 	
 	int r = flashio(dev, &Cmd,1,Id,3);
-	if( r < 0 ) return r;
+	if (r < 0)
+		return r;
 	
-	if( Id[0] == 0xBF && Id[1] == 0x25 && Id[2] == 0x41 ) r = SSTI_SST25VF016B; 
-	else if( Id[0] == 0xBF && Id[1] == 0x25 && Id[2] == 0x4A ) r = SSTI_SST25VF032B; 
-	else if( Id[0] == 0x1F && Id[1] == 0x28 ) r = ATMEL_AT45DB642D; 
-	else r = UNKNOWN_FLASH;
+	if (Id[0] == 0xBF && Id[1] == 0x25 && Id[2] == 0x41 )
+		r = SSTI_SST25VF016B; 
+	else if( Id[0] == 0xBF && Id[1] == 0x25 && Id[2] == 0x4A ) 
+		r = SSTI_SST25VF032B; 
+	else if( Id[0] == 0x1F && Id[1] == 0x28 )
+		r = ATMEL_AT45DB642D; 
+	else 
+		r = UNKNOWN_FLASH;
 	
-	switch(r)
-	{
-        case UNKNOWN_FLASH : printf("Unknown Flash Flash ID = %02x %02x %02x\n",Id[0],Id[1],Id[2]); break;
-        case ATMEL_AT45DB642D : printf("Flash: Atmel AT45DB642D  64 MBit\n"); break;
-        case SSTI_SST25VF016B : printf("Flash: SSTI  SST25VF016B 16 MBit\n"); break;
-        case SSTI_SST25VF032B : printf("Flash: SSTI  SST25VF032B 32 MBit\n"); break;
+	switch(r) {
+        case UNKNOWN_FLASH: 
+		printf("Unknown Flash Flash ID = %02x %02x %02x\n",Id[0],Id[1],Id[2]);
+		break;
+        case ATMEL_AT45DB642D:
+		printf("Flash: Atmel AT45DB642D  64 MBit\n");
+		break;
+        case SSTI_SST25VF016B:
+		printf("Flash: SSTI  SST25VF016B 16 MBit\n");
+		break;
+        case SSTI_SST25VF032B: 
+		printf("Flash: SSTI  SST25VF032B 32 MBit\n");
+		break;
 	}
-	
 	return r;
 }
 
@@ -116,30 +139,26 @@ int FlashWriteAtmel(int dev,uint32_t FlashOffset, uint8_t *Buffer,int BufferSize
     int BlockErase = BufferSize >= 8192;
     int i;
     
-    if( BlockErase )
-    {
-        for(i = 0; i < BufferSize; i += 8192 )
-        {
-		uint8_t Cmd[4];
-		if( (i & 0xFFFF) == 0 )
-		{
-			printf(" Erase    %08x\n",FlashOffset + i);
-		}
-		Cmd[0] = 0x50; // Block Erase
-		Cmd[1] = ( (( FlashOffset + i ) >> 16) & 0xFF );
-		Cmd[2] = ( (( FlashOffset + i ) >>  8) & 0xFF );
-		Cmd[3] = 0x00;
-		err = flashio(dev,Cmd,4,NULL,0);
-		if( err < 0 ) break;
-		
-		while( 1 )
-		{
-			Cmd[0] = 0xD7;  // Read Status register
-			err = flashio(dev,Cmd,1,&Cmd[0],1);
-			if( err < 0 ) break;
-			if( (Cmd[0] & 0x80) == 0x80 ) break;
-		}
-        }
+    if (BlockErase) {
+	    for(i = 0; i < BufferSize; i += 8192 ) {
+		    uint8_t Cmd[4];
+		    if( (i & 0xFFFF) == 0 )
+			    printf(" Erase    %08x\n",FlashOffset + i);
+		    Cmd[0] = 0x50; // Block Erase
+		    Cmd[1] = ( (( FlashOffset + i ) >> 16) & 0xFF );
+		    Cmd[2] = ( (( FlashOffset + i ) >>  8) & 0xFF );
+		    Cmd[3] = 0x00;
+		    err = flashio(dev,Cmd,4,NULL,0);
+		    if( err < 0 ) break;
+		    
+		    while( 1 )
+		    {
+			    Cmd[0] = 0xD7;  // Read Status register
+			    err = flashio(dev,Cmd,1,&Cmd[0],1);
+			    if( err < 0 ) break;
+			    if( (Cmd[0] & 0x80) == 0x80 ) break;
+		    }
+	    }
     }
     
     for(i = 0; i < BufferSize; i += 1024 )
@@ -147,7 +166,7 @@ int FlashWriteAtmel(int dev,uint32_t FlashOffset, uint8_t *Buffer,int BufferSize
         uint8_t Cmd[4 + 1024];
         if( (i & 0xFFFF) == 0 )
         {
-            printf(" Programm %08x\n",FlashOffset + i);
+            printf(" Program  %08x\n",FlashOffset + i);
         }
         Cmd[0] = 0x84; // Buffer 1
         Cmd[1] = 0x00;
@@ -178,7 +197,7 @@ int FlashWriteAtmel(int dev,uint32_t FlashOffset, uint8_t *Buffer,int BufferSize
     return err;
 }
 
-int FlashWriteSSTI(int dev,uint32_t FlashOffset,uint8_t *Buffer,int BufferSize)
+int FlashWriteSSTI(int dev, uint32_t FlashOffset, uint8_t *Buffer, int BufferSize)
 {
     int err = 0;
     uint8_t Cmd[6];
@@ -228,7 +247,7 @@ int FlashWriteSSTI(int dev,uint32_t FlashOffset,uint8_t *Buffer,int BufferSize)
 		    break;
 	    for(j = BufferSize - 4096; j >= 0; j -= 4096 ) {
 		    if( (j & 0xFFFF) == 0 )
-			    printf(" Programm %08x\n",FlashOffset + j);
+			    printf(" Program  %08x\n",FlashOffset + j);
 		    
 		    for(i = 0; i < 4096; i += 2 ) {
 			    if( i == 0 ) {
@@ -281,11 +300,44 @@ int FlashWriteSSTI(int dev,uint32_t FlashOffset,uint8_t *Buffer,int BufferSize)
     return err;
 }
 
+void get_id(int ddb, struct ddb_id *ddbid) {
+	uint8_t id[4];
 
-int main(int argc, char *argv[])
+	if (ioctl(ddb, IOCTL_DDB_ID, ddbid)>=0)
+		return;
+	memset(ddbid, 0, sizeof(*ddbid));
+	flashread(ddb, id, 0, 4);
+	printf("%02x %02x %02x %02x\n", 
+	       id[0], id[1], id[2], id[3]);
+	ddbid->subvendor=(id[0] << 8) | id[1];
+	ddbid->subdevice=(id[2] << 8) | id[3];
+}
+
+int sure()
 {
+	char c;
 
-	uint8_t *Buffer;
+	printf("\n\nWARNING! Flashing a new FPGA image might make your card unusable!\n");
+	printf("\n\nWARNUNG! Das Flashen eines neuen FPGA-Images kann Ihre Karte unbrauchbar machen.\n");
+	printf("\n\nAre you sure? y/n?");
+	printf("\n\nSind Sie sicher? y/n?");
+	fflush(0);
+	c = getchar();
+	if (c!='y') {
+		printf("\nFlashing aborted.\n\n");
+		return -1;
+	}
+	printf("\nStarting to flash\n\n");
+	return 0;
+}
+
+
+int main(int argc, char **argv)
+{
+	char ddbname[80];
+	int type = 0;
+	struct ddb_id ddbid;
+	uint8_t *buffer;
 	int BufferSize = 0;
 	int BlockErase = 0;
 	uint32_t FlashOffset = 0x10000;
@@ -294,19 +346,53 @@ int main(int argc, char *argv[])
 	int SectorSize=0;
 	int FlashSize=0;
 	int Flash;
-	uint8_t id[4];
 
+	uint32_t svid = 0;
+	int bin, dump=0;
 
-	ddb=open("/dev/ddbridge/card0", O_RDWR);
+	int ddbnum = 0;
 
+        while (1) {
+                int option_index = 0;
+		int c;
+                static struct option long_options[] = {
+			{"svid", required_argument, NULL, 's'},
+			{"help", no_argument , NULL, 'h'},
+			{0, 0, 0, 0}
+		};
+                c = getopt_long(argc, argv, 
+				"n:s:l:dh",
+				long_options, &option_index);
+		if (c==-1)
+			break;
+
+		switch (c) {
+		case 'd':
+			dump=1;
+			break;
+		case 's':
+			svid = strtoul(optarg, NULL, 16);
+			break;
+		case 'n':
+			ddbnum = strtol(optarg, NULL, 0);
+			break;
+		case 'h':
+		default:
+			break;
+
+		}
+	}
+	if (optind<argc) {
+		printf("Warning: unused arguments\n");
+	}
+
+	sprintf(ddbname, "/dev/ddbridge/card%d", ddbnum);
+	ddb=open(ddbname, O_RDWR);
 	if (ddb < 0) {
 		printf("Could not open device\n");
 		return -1;
 	}
-
 	Flash=FlashDetect(ddb);
-
-	printf("Flash=%d\n", Flash);
 
 	switch(Flash) {
         case ATMEL_AT45DB642D: 
@@ -323,135 +409,102 @@ int main(int argc, char *argv[])
 		break;
 	}
 
+	get_id(ddb, &ddbid);
+#if 0
+	printf("%04x %04x %04x %04x %08x %08x\n",
+	       ddbid.vendor, ddbid.device,
+	       ddbid.subvendor, ddbid.subdevice,
+	       ddbid.hw, ddbid.regmap);
+#endif
 
-	flashread(ddb, id, 0, 4);
-	printf("%02x %02x %02x %02x\n", 
-	       id[0], id[1], id[2], id[3]);
-
-
+	if (ddbid.subdevice == 0x0040)
+		type = 1;
+	
 	if( SectorSize == 0 ) return 0;
 	
-	if( argc < 2 )
-		return -1;
-
-	if (strncmp("-SubVendorID",argv[1],12) == 0 )
-	{
-		uint32_t SubVendorID;
-
-		printf("SubVendorID\n");
-
-		if( argc < 3 ) return -1;
-
-		SubVendorID = strtoul(argv[2],NULL,16);
-		
+	if (svid) {
 		BufferSize = SectorSize;
 		FlashOffset = 0;
 		
-		Buffer = malloc(BufferSize);
-		if( Buffer == NULL )
-		{
+		buffer = malloc(BufferSize);
+		if (!buffer) {
 			printf("out of memory\n");
 			return 0;
 		}
-		memset(Buffer,0xFF,BufferSize);
+		memset(buffer,0xFF,BufferSize);
 		
-		Buffer[0] = ( ( SubVendorID >> 24 ) & 0xFF );
-		Buffer[1] = ( ( SubVendorID >> 16 ) & 0xFF );
-		Buffer[2] = ( ( SubVendorID >>  8 ) & 0xFF );
-		Buffer[3] = ( ( SubVendorID       ) & 0xFF );
-		
-	} else if (strncmp("-Jump",argv[1],5) == 0 ) {
-		uint32_t Jump;
-		if( argc < 3 ) return -1;
-
-		Jump = strtoul(argv[2],NULL,16);
-		
-		BufferSize = SectorSize;
-		FlashOffset = FlashSize-SectorSize;
-		
-		Buffer = malloc(BufferSize);
-		if (!Buffer) {
-			printf("out of memory\n");
-			return 0;
-		}
-		memset(Buffer,0xFF,BufferSize);
-		memset(&Buffer[BufferSize - 256 + 0x10],0x00,16);
-		
-		Buffer[BufferSize - 256 + 0x10] = 0xbd;
-		Buffer[BufferSize - 256 + 0x11] = 0xb3;
-		Buffer[BufferSize - 256 + 0x12] = 0xc4;
-		Buffer[BufferSize - 256 + 0x1a] = 0xfe;
-		Buffer[BufferSize - 256 + 0x1e] = 0x03;
-		Buffer[BufferSize - 256 + 0x1f] = ( ( Jump >> 16 ) & 0xFF );
-		Buffer[BufferSize - 256 + 0x20] = ( ( Jump >>  8 ) & 0xFF );
-		Buffer[BufferSize - 256 + 0x21] = ( ( Jump       ) & 0xFF );
-		
+		buffer[0] = ((svid >> 24 ) & 0xFF);
+		buffer[1] = ((svid >> 16 ) & 0xFF);
+		buffer[2] = ((svid >>  8 ) & 0xFF);
+		buffer[3] = ((svid       ) & 0xFF);
 	} else {
 		int fh, i;
 		int fsize;
+		char *fname;
 
-		if (argc > 2)
-			FlashOffset = strtoul(argv[2],NULL,16);
+		if (type) {
+			fname="CIBridgeV1B_CIBridgeV1B.bit";
+			printf("Octopus CI\n");
+		} else {
+			fname="DVBBridgeV1B_DVBBridgeV1B.bit";
+			printf("Octopus\n");
+		}
 		
-		fh = open(argv[1],O_RDONLY);
-
+		fh = open(fname, O_RDONLY);
 		if (fh < 0 ) {
 			printf("File not found \n");
 			return 0;
 		}
-		
+
 		fsize = lseek(fh,0,SEEK_END);
-		
 		if( fsize > 4000000 || fsize < SectorSize )
 		{
 			close(fh);
 			printf("Invalid File Size \n");
 			return 0;
 		}
-
+		
 		if( Flash == ATMEL_AT45DB642D ) {
 			BlockErase = fsize >= 8192;
 			if( BlockErase )
 				BufferSize = (fsize + 8191) & ~8191;
 			else
 				BufferSize = (fsize + 1023) & ~1023;
-		}
-		else
-		{
+		} else {
 			BufferSize = (fsize + SectorSize - 1 ) & ~(SectorSize - 1);
 		}
 		printf(" Size     %08x\n",BufferSize);
 		
-		Buffer = malloc(BufferSize);
+		buffer = malloc(BufferSize);
 
-		if( Buffer == NULL ) {
+		if( buffer == NULL ) {
 			close(fh);
 			printf("out of memory\n");
 			return 0;
 		}
 	
-		memset(Buffer, 0xFF, BufferSize);
+		memset(buffer, 0xFF, BufferSize);
 		lseek(fh, 0, SEEK_SET);
-		read(fh, Buffer, fsize);
+		read(fh, buffer, fsize);
 		close(fh);
 		
 		if (BufferSize >= 0x10000) {
-			// Clear header
 			for(i = 0; i < 0x200; i += 1 ) {
-				if ( *(uint16_t *) (&Buffer[i]) == 0xFFFF )
+				if ( *(uint16_t *) (&buffer[i]) == 0xFFFF )
 					break;
-				Buffer[i] = 0xFF;
+				buffer[i] = 0xFF;
 			}
 		}
 	}
-	
+	if (sure()<0)
+		return 0;
 	switch(Flash) {
         case ATMEL_AT45DB642D: 
-		err = FlashWriteAtmel(ddb, FlashOffset, Buffer, BufferSize); 
+		err = FlashWriteAtmel(ddb, FlashOffset, buffer, BufferSize); 
 		break;
         case SSTI_SST25VF016B: 
         case SSTI_SST25VF032B: 
-		err = FlashWriteSSTI(ddb, FlashOffset, Buffer, BufferSize); 
+		err = FlashWriteSSTI(ddb, FlashOffset, buffer, BufferSize); 
 		break;
 	}
 	
@@ -460,6 +513,6 @@ int main(int argc, char *argv[])
 	else
 		printf("Program Done\n");
 	
-	free(Buffer);
+	free(buffer);
 	return 0;
 }

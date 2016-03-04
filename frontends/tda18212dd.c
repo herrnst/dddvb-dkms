@@ -480,6 +480,7 @@ static int PowerMeasurement(struct tda_state *state, u8 *pPowerLevel)
 		
 		if( *pPowerLevel > 110 ) *pPowerLevel = 110;
 	} while(0);
+	printk("PL %d\n", *pPowerLevel);
 	return status;
 }
 
@@ -782,6 +783,14 @@ static int get_frequency(struct dvb_frontend *fe, u32 *frequency)
 	return 0;
 }
 
+static int get_rf_strength(struct dvb_frontend *fe, u16 *st)
+{
+	struct tda_state *state = fe->tuner_priv;
+
+	*st = state->m_LastPowerLevel;
+	return 0;
+}
+
 static int get_if(struct dvb_frontend *fe, s32 *frequency)
 {
 	struct tda_state *state = fe->tuner_priv;
@@ -817,6 +826,7 @@ static struct dvb_tuner_ops tuner_ops = {
 	.get_frequency     = get_frequency,
 	.get_if            = get_if,
 	.get_bandwidth     = get_bandwidth,
+	.get_rf_strength   = get_rf_strength,
 };
 
 struct dvb_frontend *tda18212dd_attach(struct dvb_frontend *fe,

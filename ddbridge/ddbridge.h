@@ -1,5 +1,5 @@
 /*
- * ddbridge.h: Digital Devices PCIe bridge driver 
+ * ddbridge.h: Digital Devices PCIe bridge driver
  *
  * Copyright (C) 2010-2011 Digital Devices GmbH
  *
@@ -55,8 +55,10 @@ struct ddb_info {
 	int   type;
 #define DDB_NONE         0
 #define DDB_OCTOPUS      1
+#define DDB_OCTOPUS_CI   2
 	char *name;
 	int   port_num;
+	int   i2c_num;
 	int   led_num;
 	int   fan_num;
 	int   temp_num;
@@ -84,6 +86,7 @@ struct ddb_dma {
 	u8                    *vbuf[DMA_MAX_BUFS];
 	u32                    num;
 	u32                    size;
+	u32                    div;
 	u32                    bufreg;
 
 	struct tasklet_struct  tasklet;
@@ -112,6 +115,14 @@ struct ddb_dvb {
 	int                    attached;
 };
 
+struct ddb_ci {
+	struct dvb_ca_en50221  en;
+	struct ddb_port       *port;
+	u32                    nr;
+	struct mutex           lock;
+};
+
+
 struct ddb_input {
 	struct ddb_port       *port;
 	u32                    nr;
@@ -125,6 +136,7 @@ struct ddb_output {
 	struct ddb_port       *port;
 	u32                    nr;
 	struct ddb_dma        *dma;
+	struct ddb_input      *redirect;
 };
 
 struct ddb_i2c {
@@ -136,6 +148,7 @@ struct ddb_i2c {
 	u32                    wbuf;
 	int                    done;
 	wait_queue_head_t      wq;
+	struct mutex           lock;
 };
 
 struct ddb_port {
@@ -154,6 +167,8 @@ struct ddb_port {
 #define DDB_TUNER_DVBS_ST_AA    2
 #define DDB_TUNER_DVBCT_TR      3
 #define DDB_TUNER_DVBCT_ST      4
+#define DDB_CI_INTERNAL         5
+#define DDB_CI_EXTERNAL_SONY    6
 	u32                    adr;
 
 	struct ddb_input      *input[2];
@@ -163,6 +178,10 @@ struct ddb_port {
 
 struct ddb {
 	struct pci_dev        *pdev;
+	const struct pci_device_id *id;
+	struct ddb_info       *info;
+	int                    msi;
+
 	unsigned char         *regs;
 	struct ddb_port        port[DDB_MAX_PORT];
 	struct ddb_i2c         i2c[DDB_MAX_I2C];
@@ -175,11 +194,7 @@ struct ddb {
 	u32                    nr;
 	u8                     iobuf[1028];
 
-	struct ddb_info       *info;
-	int                    msi;
-
 	u8                     leds;
-
 	u32                    ts_irq;
 	u32                    i2c_irq;
 };

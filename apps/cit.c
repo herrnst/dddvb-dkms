@@ -43,7 +43,7 @@ void proc_buf(uint8_t *buf, uint32_t *d)
 		return;
 	c=(buf[4]<<24)|(buf[5]<<16)|(buf[6]<<8)|buf[7];
 	if (c!=*d) {
-		printf("CONT ERROR %08x %08x\n", c, *d);
+		printf("CONT ERROR: got %08x  expected %08x\n", c, *d);
 		*d=c;
 	} else {
 		if (memcmp(ts+8, buf+8, 180))
@@ -59,7 +59,7 @@ void *get_ts(void *a)
 	uint8_t buf[188*1024];
 	int len, off;
 
-	int fdi=open("/dev/dvb/adapter2/sec0", O_RDONLY);
+	int fdi=open("/dev/dvb/adapter0/sec0", O_RDONLY);
 	uint32_t d=0;
 
 	while (1) {
@@ -85,7 +85,7 @@ void send(void)
 	uint32_t c=0;
 	int fdo;
 
-	fdo=open("/dev/dvb/adapter2/sec0", O_WRONLY);
+	fdo=open("/dev/dvb/adapter0/sec0", O_WRONLY);
 
 
 	while (1) {
@@ -113,5 +113,6 @@ int main()
 
 	memset(ts+8, 180, 0x5a);
 	pthread_create(&th, NULL, get_ts, NULL);
+	usleep(10000);
 	send();
 }

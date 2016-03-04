@@ -3623,8 +3623,28 @@ static int stv090x_read_signal_strength(struct dvb_frontend *fe, u16 *strength)
 		str = 0;
 	else if (agc < stv090x_rf_tab[ARRAY_SIZE(stv090x_rf_tab) - 1].read)
 		str = -100;
+#ifdef DBVALS 
+	*strength = str;
+#else
 	*strength = (str + 100) * 0xFFFF / 100;
+#endif
+	return 0;
+}
 
+static int stv090x_read_ucblocks(struct dvb_frontend *fe, u32 *ucblocks)
+{
+	struct stv090x_state *state = fe->demodulator_priv;
+	u8 err0, err1;
+
+	*ucblocks = 0;
+	switch (state->delsys) {
+	case STV090x_DVBS2:
+		err0 = STV090x_READ_DEMOD(state, UPCRCKO0);
+		err1 = STV090x_READ_DEMOD(state, UPCRCKO1);
+		*ucblocks = (err1 << 8) | err0;
+	default:
+		break;
+	}
 	return 0;
 }
 
@@ -3652,10 +3672,23 @@ static int stv090x_read_cnr(struct dvb_frontend *fe, u16 *cnr)
 				msleep(1);
 			}
 			val /= 16;
+#ifdef DBVALS
+			{
+				s16 snr;
+				snr = stv090x_table_lookup(stv090x_s2cn_tab,
+							    ARRAY_SIZE(stv090x_s2cn_tab) - 1, val);
+				if (snr > stv090x_s2cn_tab[0].read)
+					snr = -30;
+				else if (snr < stv090x_s2cn_tab[ARRAY_SIZE(stv090x_s2cn_tab) - 1].read)
+					snr = 500;
+				*cnr = snr;
+			}
+#else
 			last = ARRAY_SIZE(stv090x_s2cn_tab) - 1;
 			div = stv090x_s2cn_tab[0].read -
 			      stv090x_s2cn_tab[last].read;
 			*cnr = 0xFFFF - ((val * 0xFFFF) / div);
+#endif
 		}
 		break;
 
@@ -3674,10 +3707,23 @@ static int stv090x_read_cnr(struct dvb_frontend *fe, u16 *cnr)
 				msleep(1);
 			}
 			val /= 16;
+#ifdef DBVALS
+			{
+				s16 snr;
+				snr = stv090x_table_lookup(stv090x_s1cn_tab,
+							    ARRAY_SIZE(stv090x_s1cn_tab) - 1, val);
+				if (snr > stv090x_s1cn_tab[0].read)
+					snr = 0;
+				else if (snr < stv090x_s2cn_tab[ARRAY_SIZE(stv090x_s1cn_tab) - 1].read)
+					snr = 500;
+				*cnr = snr;
+			}
+#else
 			last = ARRAY_SIZE(stv090x_s1cn_tab) - 1;
 			div = stv090x_s1cn_tab[0].read -
 			      stv090x_s1cn_tab[last].read;
 			*cnr = 0xFFFF - ((val * 0xFFFF) / div);
+#endif
 		}
 		break;
 	default:
@@ -4748,7 +4794,8 @@ static struct dvb_frontend_ops stv090x_ops = {
 	.read_status			= stv090x_read_status,
 	.read_ber			= stv090x_read_per,
 	.read_signal_strength		= stv090x_read_signal_strength,
-	.read_snr			= stv090x_read_cnr
+	.read_snr			= stv090x_read_cnr,
+	.read_ucblocks			= stv090x_read_ucblocks,
 };
 
 
