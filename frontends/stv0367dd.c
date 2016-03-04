@@ -97,6 +97,7 @@ struct stv_state {
 	u8    m_OFDM_Guard;
 
 	u32   ucblocks;
+	u32   ber;
 };
 
 struct init_table {
@@ -1338,7 +1339,7 @@ static int OFDM_GetSignalToNoise(struct stv_state *state, s32 *pSignalToNoise)
 		//   361/362 Datasheet: snr = CHC_SNR/8 dB -> this looks best
 		*pSignalToNoise = ( (s32)CHC_SNR * 10) / 8;
 	}
-	printk("SNR %d\n", *pSignalToNoise);
+	//printk("SNR %d\n", *pSignalToNoise);
 	return status;
 }
 
@@ -1509,7 +1510,6 @@ static int attach_init(struct stv_state *state)
 static void c_release(struct dvb_frontend* fe)
 {
 	struct stv_state *state=fe->demodulator_priv;
-	printk("%s\n", __FUNCTION__);
 	kfree(state);
 }
 
@@ -1572,7 +1572,7 @@ static int ofdm_lock(struct stv_state *state)
 
         if (!(OFDM_Status & 0x40))
 		return -1;
-	printk("lock 1\n");
+	//printk("lock 1\n");
 
         readreg(state, R367_OFDM_SYR_STAT,&SYR_STAT);
         FFTMode = (SYR_STAT & 0x0C) >> 2;
@@ -1613,7 +1613,7 @@ static int ofdm_lock(struct stv_state *state)
 	msleep(FECTimeOut);
         if( (OFDM_Status & 0x98) != 0x98 )
 		;//return -1;
-	printk("lock 2\n");
+	//printk("lock 2\n");
 	
         {
             u8 Guard = (SYR_STAT & 0x03);
@@ -1653,7 +1653,7 @@ static int ofdm_lock(struct stv_state *state)
         readreg(state, R367_OFDM_TSSTATUS,&TSStatus);
         if( (TSStatus & 0x80) != 0x80 )
 		return -1;
-	printk("lock 3\n");
+	//printk("lock 3\n");
 	return status;
 }
 
@@ -1685,7 +1685,7 @@ static int set_parameters(struct dvb_frontend *fe,
         default:
 		stat = -EINVAL;
 	}
-	printk("%s IF=%d OF=%d done\n", __FUNCTION__, IF, OF);
+	//printk("%s IF=%d OF=%d done\n", __FUNCTION__, IF, OF);
 	return stat;
 }
 
@@ -1898,10 +1898,57 @@ static int read_status(struct dvb_frontend *fe, fe_status_t *status)
 	return 0;
 }
 
-static int read_ber(struct dvb_frontend *fe, u32 *ber)
+
+static int read_ber_ter(struct dvb_frontend *fe, u32 *ber)
 {
-	//struct stv_state *state = fe->demodulator_priv;
-	*ber=0;
+	struct stv_state *state = fe->demodulator_priv;
+	u64 err64;
+	u32 err;
+	u8 cnth, cntm, cntl;
+
+#if 1
+	readreg(state, R367_OFDM_SFERRCNTH, &cnth);
+
+	if (cnth & 0x80) {
+		*ber = state->ber; 
+		return 0;
+	}
+
+	readreg(state, R367_OFDM_SFERRCNTM, &cntm);
+	readreg(state, R367_OFDM_SFERRCNTL, &cntl);
+
+	err = ((cnth & 0x7f) << 16) | (cntm << 8) | cntl;
+	
+#if 0
+	err64 = (u64) err;
+	err64 *= 1000000000ULL;
+	err64 >>= 21;
+	err = err64;
+#endif
+#else
+	readreg(state, R367_OFDM_ERRCNT1HM, &cnth);
+
+#endif
+	*ber = state->ber = err;
+	return 0;
+}
+
+static int read_ber_cab(struct dvb_frontend *fe, u32 *ber)
+{
+	struct stv_state *state = fe->demodulator_priv;
+	u32 err;
+	u8 cntm, cntl, ctrl;
+
+	readreg(state, R367_QAM_BERT_1, &ctrl);
+	if (!(ctrl & 0x20)) {
+		readreg(state, R367_QAM_BERT_2, &cntl);
+		readreg(state, R367_QAM_BERT_3, &cntm);
+		err = (cntm << 8) | cntl;
+		//printk("err %04x\n", err);
+		state->ber = err;
+		writereg(state, R367_QAM_BERT_1, 0x27);
+	}
+	*ber = (u32) state->ber;
 	return 0;
 }
 
@@ -1920,15 +1967,18 @@ static int read_snr(struct dvb_frontend *fe, u16 *snr)
 {
 	struct stv_state *state = fe->demodulator_priv;
 	s32 snr2;
+	int ret;
 
 	switch(state->demod_state) {
         case QAMStarted:
-		return QAM_GetSignalToNoise(state, &snr2);
+		ret = QAM_GetSignalToNoise(state, &snr2);
+		break;
         case OFDMStarted:
-		return OFDM_GetSignalToNoise(state, &snr);
+		ret = OFDM_GetSignalToNoise(state, &snr2);
+		break;
 	}
 	*snr = snr2&0xffff;
-	return 0;
+	return ret;
 }
 
 static int read_ucblocks(struct dvb_frontend *fe, u32 *ucblocks)
@@ -1945,11 +1995,10 @@ static int read_ucblocks(struct dvb_frontend *fe, u32 *ucblocks)
 		*ucblocks = (errm << 8) | errl;
 		break;
         case OFDMStarted:
-		readreg(state, R367_OFDM_SFERRCNTH, &val);
-		if ((val & 0x80) == 0) {
-			readreg(state, R367_OFDM_ERRCNT1H, &errh);
-			readreg(state, R367_OFDM_ERRCNT1M, &errl);
-			readreg(state, R367_OFDM_ERRCNT1L, &errm);
+		readreg(state, R367_OFDM_ERRCNT1H, &errh);
+		if ((errh & 0x80) == 0) {
+			readreg(state, R367_OFDM_ERRCNT1M, &errm);
+			readreg(state, R367_OFDM_ERRCNT1L, &errl);
 			state->ucblocks = (errh <<16) | (errm << 8) | errl;
 		}
 		*ucblocks = state->ucblocks;
@@ -2022,7 +2071,7 @@ static struct dvb_frontend_ops c_ops = {
 	.get_tune_settings = c_get_tune_settings,
 
 	.read_status = read_status,
-	.read_ber = read_ber,
+	.read_ber = read_ber_cab,
 	.read_signal_strength = read_signal_strength,
 	.read_snr = read_snr,
 	.read_ucblocks = read_ucblocks,
@@ -2062,7 +2111,7 @@ static struct dvb_frontend_ops t_ops = {
 	.get_frontend = t_get_frontend,
 
 	.read_status = read_status,
-	.read_ber = read_ber,
+	.read_ber = read_ber_ter,
 	.read_signal_strength = read_signal_strength,
 	.read_snr = read_snr,
 	.read_ucblocks = read_ucblocks,

@@ -18,6 +18,7 @@ MODDEFS := CONFIG_DVB_CORE=m CONFIG_DVB_DDBRIDGE=m CONFIG_DVB_DRXK=m CONFIG_DVB_
 
 all: 
 	$(MAKE) -C $(KDIR) SUBDIRS=$(PWD) $(MODDEFS) modules
+	$(MAKE) -C apps
 
 dep:
 	DIR=`pwd`; (cd $(TOPDIR); make SUBDIRS=$$DIR dep)

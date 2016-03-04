@@ -15,7 +15,6 @@ echo "00 01" > /sys/class/ddbridge/ddbridge0/redirect
 
 will pipe input 0 of card 0 through CI at port 1 (TAB 2) of card 0.
 
-Redirection should only be down right after loading the driver 
+Redirection should only be done right after loading the driver 
 (or booting if the driver is built-in) and before using the
 devices in any way.
-

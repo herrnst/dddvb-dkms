@@ -212,14 +212,15 @@ static int write_io_data(struct cxd *ci, u8 *data, u8 n)
 
 static int write_regm(struct cxd *ci, u8 reg, u8 val, u8 mask)
 {
-	int status;
+	int status = 0;
 
-	status=i2c_write_reg(ci->i2c, ci->cfg.adr, 0, reg);
+	if (ci->lastaddress != reg)
+		status = i2c_write_reg(ci->i2c, ci->cfg.adr, 0, reg);
 	if (!status && reg >= 6 && reg <=8 && mask != 0xff)
 		status = i2c_read_reg(ci->i2c, ci->cfg.adr, 1, &ci->regs[reg]);
+	ci->lastaddress = reg;
 	ci->regs[reg] = (ci->regs[reg] & (~mask)) | val;
 	if (!status) {
-		ci->lastaddress = reg;
 		status = i2c_write_reg(ci->i2c, ci->cfg.adr, 1, ci->regs[reg]);
 	}
 	if (reg == 0x20)
@@ -235,10 +236,11 @@ static int write_reg(struct cxd *ci, u8 reg, u8 val)
 #ifdef BUFFER_MODE
 static int write_block(struct cxd *ci, u8 adr, u8 *data, int n)
 {
-	int status;
+	int status = 0;
 	u8 buf[256] = {1};
 
-	status = i2c_write_reg(ci->i2c, ci->cfg.adr, 0, adr);
+	if (ci->lastaddress != adr)
+		status = i2c_write_reg(ci->i2c, ci->cfg.adr, 0, adr);
 	if (!status) {
 		ci->lastaddress = adr;
 		memcpy(buf + 1, data, n);
@@ -434,6 +436,7 @@ static int slot_reset(struct dvb_ca_en50221 *ca, int slot)
 	struct cxd *ci = ca->data;
 
 	mutex_lock(&ci->lock);
+	printk("slot_reset\n");
 #if 0
 	write_reg(ci, 0x00, 0x21);
 	write_reg(ci, 0x06, 0x1F);
@@ -446,6 +449,7 @@ static int slot_reset(struct dvb_ca_en50221 *ca, int slot)
 	cam_mode(ci, 0);
 	write_reg(ci, 0x00, 0x21);
 	write_reg(ci, 0x06, 0x1F);
+	//msleep(300);
 	write_reg(ci, 0x00, 0x31);
 	write_regm(ci, 0x20, 0x80, 0x80);
 	write_reg(ci, 0x03, 0x02);
@@ -482,9 +486,14 @@ static int slot_shutdown(struct dvb_ca_en50221 *ca, int slot)
 
 	printk(KERN_INFO "slot_shutdown\n");
 	mutex_lock(&ci->lock);
+	write_reg(ci, 0x00, 0x21);
+	write_reg(ci, 0x06, 0x1F);
+	msleep(300); 
+
 	write_regm(ci, 0x09, 0x08, 0x08); 
 	write_regm(ci, 0x20, 0x80, 0x80); /* Reset CAM Mode */
 	write_regm(ci, 0x06, 0x07, 0x07); /* Clear IO Mode */
+
 	ci->mode = -1;
 	mutex_unlock(&ci->lock);
 	return 0;
@@ -514,29 +523,29 @@ static int campoll(struct cxd *ci)
 		return 0;
 	write_reg(ci, 0x05, istat);
 
-	if (istat&0x40) {
-		ci->dr=1;
+	if (istat & 0x40) {
+		ci->dr = 1;
 		printk(KERN_INFO "DR\n");
 	}
-	if (istat&0x20) 
+	if (istat & 0x20) 
 		printk(KERN_INFO "WC\n");
 
-	if (istat&2) {
+	if (istat & 2) {
 		u8 slotstat;
 
 		read_reg(ci, 0x01, &slotstat);
-		if (!(2&slotstat)) {
+		if (!(2 & slotstat)) {
 			if (!ci->slot_stat) {
-				ci->slot_stat|=DVB_CA_EN50221_POLL_CAM_PRESENT;
+				ci->slot_stat |= DVB_CA_EN50221_POLL_CAM_PRESENT;
 				write_regm(ci, 0x03, 0x08, 0x08);
 			}
 
 		} else {
 			if (ci->slot_stat) {
-				ci->slot_stat=0;
+				ci->slot_stat = 0;
 				write_regm(ci, 0x03, 0x00, 0x08);
 				printk(KERN_INFO "NO CAM\n");
-				ci->ready=0;
+				ci->ready = 0;
 			}
 		}
 		if (istat&8 && ci->slot_stat==DVB_CA_EN50221_POLL_CAM_PRESENT) {

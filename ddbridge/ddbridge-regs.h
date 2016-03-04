@@ -21,8 +21,6 @@
  * Or, point your browser to http://www.gnu.org/copyleft/gpl.html
  */
 
-/* DD-DVBBridgeV1.h 388 2011-07-13 20:47:08Z manfred */
-
 /* Register Definitions */
 
 #define CUR_REGISTERMAP_VERSION     0x10003
@@ -66,6 +64,9 @@
 #define INTERRUPT_STATUS (INTERRUPT_BASE + 0x20)
 #define INTERRUPT_ACK    (INTERRUPT_BASE + 0x20)
 
+#define INTMASK_CLOCKGEN    (0x00000001)
+#define INTMASK_TEMPMON     (0x00000002)
+
 #define INTMASK_I2C1        (0x00000001)
 #define INTMASK_I2C2        (0x00000002)
 #define INTMASK_I2C3        (0x00000004)
@@ -89,6 +90,25 @@
 #define INTMASK_TSOUTPUT2   (0x00020000)
 #define INTMASK_TSOUTPUT3   (0x00040000)
 #define INTMASK_TSOUTPUT4   (0x00080000)
+
+
+/*  Clock Generator ( Sil598 @ 0xAA) */
+#define CLOCKGEN_BASE       (0x80)
+#define CLOCKGEN_CONTROL    (CLOCKGEN_BASE + 0x00)
+#define CLOCKGEN_INDEX      (CLOCKGEN_BASE + 0x04)
+#define CLOCKGEN_WRITEDATA  (CLOCKGEN_BASE + 0x08)
+#define CLOCKGEN_READDATA   (CLOCKGEN_BASE + 0x0C)
+
+
+/* Temperature Monitor */
+#define TEMPMON_BASE        (0xA0)
+#define TEMPMON_CONTROL    (TEMPMON_BASE + 0x00)
+#define TEMPMON_SENSOR1    (TEMPMON_BASE + 0x08)    // SHORT Temperature in °C x 256
+#define TEMPMON_SENSOR2    (TEMPMON_BASE + 0x0C)    // SHORT Temperature in °C x 256
+
+//
+// --------------------------------------------------------------------------
+
 
 /* ------------------------------------------------------------------------- */
 /* I2C Master Controller */
@@ -125,6 +145,7 @@
 
 #define DMA_BASE_WRITE        (0x100)
 #define DMA_BASE_READ         (0x140)
+#define DMA_BASE_READ_MOD     (0x100)
 
 #define DMA_CONTROL     (0x00)
 #define DMA_ERROR       (0x04)
@@ -202,3 +223,142 @@
 #define CI_BUFFER(i)                    (CI_BUFFER_BASE + (i) * CI_BUFFER_SIZE )
 #define CI_BLOCKIO_RECEIVE_BUFFER(i)    (CI_BUFFER_BASE + (i) * CI_BUFFER_SIZE )
 #define CI_BLOCKIO_SEND_BUFFER(i)       (CI_BUFFER_BASE + (i) * CI_BUFFER_SIZE + CI_BLOCKIO_BUFFER_SIZE )
+
+
+
+
+
+#define VCO1_BASE           (0xC0)
+#define VCO1_CONTROL        (VCO1_BASE + 0x00)
+#define VCO1_DATA           (VCO1_BASE + 0x04)  // 24 Bit
+#define VCO1_CONTROL_WRITE  (0x00000001)   // 1 = Trigger write, resets when done
+#define VCO1_CONTROL_CE     (0x00000002)   // 0 = Put VCO into power down
+#define VCO1_CONTROL_MUXOUT (0x00000004)   // Muxout from VCO (usually = Lock)
+
+#define VCO2_BASE           (0xC8)
+#define VCO2_CONTROL        (VCO2_BASE + 0x00)
+#define VCO2_DATA           (VCO2_BASE + 0x04)  // 24 Bit
+#define VCO2_CONTROL_WRITE  (0x00000001)   // 1 = Trigger write, resets when done
+#define VCO2_CONTROL_CE     (0x00000002)   // 0 = Put VCO into power down
+#define VCO2_CONTROL_MUXOUT (0x00000004)   // Muxout from VCO (usually = Lock)
+
+#define VCO3_BASE           (0xD0)
+#define VCO3_CONTROL        (VCO3_BASE + 0x00)
+#define VCO3_DATA           (VCO3_BASE + 0x04)  // 32 Bit
+#define VCO3_CONTROL_WRITE  (0x00000001)   // 1 = Trigger write, resets when done
+#define VCO3_CONTROL_CE     (0x00000002)   // 0 = Put VCO into power down
+#define VCO3_CONTROL_MUXOUT (0x00000004)   // Muxout from VCO (usually = Lock)
+
+#define RF_ATTENUATOR   (0xD8)
+//  0x00 =  0 dB
+//  0x01 =  1 dB
+//    ... 
+//  0x1F = 31 dB
+
+#define RF_POWER        (0xE0)
+#define RF_POWER_BASE       (0xE0)
+#define RF_POWER_CONTROL    (RF_POWER_BASE + 0x00)
+#define RF_POWER_DATA       (RF_POWER_BASE + 0x04)
+
+#define RF_POWER_CONTROL_START     (0x00000001)
+#define RF_POWER_CONTROL_DONE      (0x00000002)
+#define RF_POWER_CONTROL_VALIDMASK (0x00000700)
+#define RF_POWER_CONTROL_VALID     (0x00000500)
+
+
+#define IQOUTPUT_BASE           (0x140)
+#define IQOUTPUT_CONTROL        (IQOUTPUT_BASE + 0x00)
+#define IQOUTPUT_CONTROL2       (IQOUTPUT_BASE + 0x04)    
+#define IQOUTPUT_PEAK_DETECTOR  (IQOUTPUT_BASE + 0x08)
+#define IQOUTPUT_POSTSCALER     (IQOUTPUT_BASE + 0x0C)
+#define IQOUTPUT_PRESCALER      (IQOUTPUT_BASE + 0x10)
+
+#define IQOUTPUT_EQUALIZER_0    (IQOUTPUT_BASE + 0x14)
+#define IQOUTPUT_EQUALIZER_1    (IQOUTPUT_BASE + 0x18)
+#define IQOUTPUT_EQUALIZER_2    (IQOUTPUT_BASE + 0x1C)
+#define IQOUTPUT_EQUALIZER_3    (IQOUTPUT_BASE + 0x20)
+#define IQOUTPUT_EQUALIZER_4    (IQOUTPUT_BASE + 0x24)
+#define IQOUTPUT_EQUALIZER_5    (IQOUTPUT_BASE + 0x28)
+#define IQOUTPUT_EQUALIZER_6    (IQOUTPUT_BASE + 0x2C)
+#define IQOUTPUT_EQUALIZER_7    (IQOUTPUT_BASE + 0x30)
+#define IQOUTPUT_EQUALIZER_8    (IQOUTPUT_BASE + 0x34)
+#define IQOUTPUT_EQUALIZER_9    (IQOUTPUT_BASE + 0x38)
+#define IQOUTPUT_EQUALIZER_10   (IQOUTPUT_BASE + 0x3C)
+
+#define IQOUTPUT_EQUALIZER(i)   (IQOUTPUT_EQUALIZER_0 + (i) * 4 )
+
+#define IQOUTPUT_CONTROL_RESET              (0x00000001)
+#define IQOUTPUT_CONTROL_ENABLE             (0x00000002)
+#define IQOUTPUT_CONTROL_RESET_PEAK         (0x00000004)
+#define IQOUTPUT_CONTROL_ENABLE_PEAK        (0x00000008)
+#define IQOUTPUT_CONTROL_BYPASS_EQUALIZER   (0x00000010)
+
+
+// Note: Size and resolution of the equalizer may be reavaluted on final design
+
+
+// --------------------------------------------------------------------------
+//
+
+#define MODULATOR_BASE          (0x180)
+#define MODULATOR_CONTROL       (MODULATOR_BASE)
+#define MODULATOR_IQTABLE_INDEX (MODULATOR_BASE+4)
+
+
+#define DAC_BASE            (0x190)
+#define DAC_CONTROL         (DAC_BASE)
+#define DAC_WRITE_DATA      (DAC_BASE+4)
+#define DAC_READ_DATA       (DAC_BASE+8)
+
+#define DAC_CONTROL_INSTRUCTION_REG (0xFF)
+#define DAC_CONTROL_STARTIO         (0x100)
+#define DAC_CONTROL_RESET           (0x200)
+
+// --------------------------------------------------------------------------
+// Modulator Channels
+
+#define CHANNEL_BASE            (0x200)
+#define CHANNEL_CONTROL(i)      (CHANNEL_BASE + (i) * 16 + 0x00)
+#define CHANNEL_SETTINGS(i)     (CHANNEL_BASE + (i) * 16 + 0x04)
+#define CHANNEL_IQTABLESIZE(i)  (CHANNEL_BASE + (i) * 16 + 0x08)
+#define CHANNEL_RATE_INCR(i)    (CHANNEL_BASE + (i) * 16 + 0x0C)
+
+#define CHANNEL_CONTROL_RESET           (0x00000001)
+#define CHANNEL_CONTROL_ENABLE_DVB      (0x00000002)
+#define CHANNEL_CONTROL_ENABLE_IQ       (0x00000004)
+#define CHANNEL_CONTROL_ENABLE_FILTER   (0x00000008)
+
+#define CHANNEL_CONTROL_RESET_ERROR     (0x00010000)
+#define CHANNEL_CONTROL_ERROR_SYNC      (0x20000000)
+#define CHANNEL_CONTROL_ERROR_UNDERRUN  (0x40000000)
+#define CHANNEL_CONTROL_ERROR_FATAL     (0x80000000)
+
+#define CHANNEL_SETTINGS_QAM_MASK       (0x00000007)
+#define CHANNEL_SETTINGS_QAM16          (0x00000000)
+#define CHANNEL_SETTINGS_QAM32          (0x00000001)
+#define CHANNEL_SETTINGS_QAM64          (0x00000002)
+#define CHANNEL_SETTINGS_QAM128         (0x00000003)
+#define CHANNEL_SETTINGS_QAM256         (0x00000004)
+
+
+// NOTES:
+// Only channel 0 implemented
+// Upcoming changes    Move IQ Tablesize to global modulator control
+// Exact scope of enable bits needs to be reevaluted.
+//    For now only set enable to
+//       (CHANNEL_CONTROL_ENABLE_IQ) 
+//    or (CHANNEL_CONTROL_ENABLE_IQ|CHANNEL_CONTROL_ENABLE_DVB|CHANNEL_CONTROL_ENABLE_FILTER)
+//    First settings outputs unmodulated carrier for calibration
+
+
+// IQTables
+//  Notes:
+//    Size is subject to change, and as side effect will QTABLE_BASE
+//    Currently this directly the table for channel 0
+//    TODO for multiple channels select the table with index register in MODULATOR_BASE
+
+#define ITABLE_BASE                 0x8000
+#define QTABLE_BASE                 0xa000
+
+#define IQTABLE_SIZE                0x2000
+

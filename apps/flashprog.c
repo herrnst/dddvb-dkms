@@ -77,8 +77,8 @@ enum {
 
 int flashread(int ddb, uint8_t *buf, uint32_t addr, uint32_t len)
 {
-	uint8_t cmd[4]={0x03, (addr>>24)&0xff, 
-			(addr>>16)&0xff, addr&0xff};
+	uint8_t cmd[4]={0x03, (addr>>16)&0xff, 
+			(addr>>8)&0xff, addr&0xff};
 	
 	return flashio(ddb, cmd, 4, buf, len);
 }
@@ -351,6 +351,7 @@ int main(int argc, char **argv)
 	int bin, dump=0;
 
 	int ddbnum = 0;
+	int force = 0;
 
         while (1) {
                 int option_index = 0;
@@ -358,10 +359,11 @@ int main(int argc, char **argv)
                 static struct option long_options[] = {
 			{"svid", required_argument, NULL, 's'},
 			{"help", no_argument , NULL, 'h'},
+			{"force", no_argument , NULL, 'f'},
 			{0, 0, 0, 0}
 		};
                 c = getopt_long(argc, argv, 
-				"n:s:l:dh",
+				"n:s:l:dfh",
 				long_options, &option_index);
 		if (c==-1)
 			break;
@@ -375,6 +377,9 @@ int main(int argc, char **argv)
 			break;
 		case 'n':
 			ddbnum = strtol(optarg, NULL, 0);
+			break;
+		case 'f':
+			force = 1;
 			break;
 		case 'h':
 		default:
@@ -417,8 +422,14 @@ int main(int argc, char **argv)
 	       ddbid.hw, ddbid.regmap);
 #endif
 
-	if (ddbid.subdevice == 0x0040)
+	if (ddbid.device == 0x0011)
 		type = 1;
+	if (ddbid.device == 0x0201)
+		type = 2;
+	if (ddbid.device == 0x02)
+		type = 3;
+	if (ddbid.device == 0x03)
+		type = 0;
 	
 	if( SectorSize == 0 ) return 0;
 	
@@ -442,12 +453,24 @@ int main(int argc, char **argv)
 		int fsize;
 		char *fname;
 
-		if (type) {
-			fname="CIBridgeV1B_CIBridgeV1B.bit";
-			printf("Octopus CI\n");
-		} else {
+		switch (type) {
+		default:
+		case 0:
 			fname="DVBBridgeV1B_DVBBridgeV1B.bit";
 			printf("Octopus\n");
+			break;
+		case 1:
+			fname="CIBridgeV1B_CIBridgeV1B.bit";
+			printf("Octopus CI\n");
+			break;
+		case 2:
+			fname="DVBModulatorV1B_DVBModulatorV1B.bit";
+			printf("Modulator\n");
+			break;
+		case 3:
+			fname="DVBBridgeV1A_DVBBridgeV1A.bit";
+			printf("Octopus 35\n");
+			break;
 		}
 		
 		fh = open(fname, O_RDONLY);
@@ -455,6 +478,7 @@ int main(int argc, char **argv)
 			printf("File not found \n");
 			return 0;
 		}
+		printf("Using bitstream %s\n", fname);
 
 		fsize = lseek(fh,0,SEEK_END);
 		if( fsize > 4000000 || fsize < SectorSize )
@@ -496,7 +520,7 @@ int main(int argc, char **argv)
 			}
 		}
 	}
-	if (sure()<0)
+	if (!force && sure()<0)
 		return 0;
 	switch(Flash) {
         case ATMEL_AT45DB642D: 
@@ -509,9 +533,9 @@ int main(int argc, char **argv)
 	}
 	
 	if (err < 0) 
-		printf("Program Error\n");
+		printf("Programming Error\n");
 	else
-		printf("Program Done\n");
+		printf("Programming Done\n");
 	
 	free(buffer);
 	return 0;

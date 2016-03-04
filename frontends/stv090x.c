@@ -35,6 +35,9 @@
 #include "stv090x.h"
 #include "stv090x_priv.h"
 
+#define ERRCTRL1_DVBS1 0x76
+#define ERRCTRL1_DVBS2 0x67
+
 static unsigned int verbose;
 module_param(verbose, int, 0644);
 
@@ -2884,7 +2887,7 @@ static int stv090x_optimize_track(struct stv090x_state *state)
 			}
 		}
 
-		if (STV090x_WRITE_DEMOD(state, ERRCTRL1, 0x75) < 0)
+		if (STV090x_WRITE_DEMOD(state, ERRCTRL1, ERRCTRL1_DVBS1) < 0)
 			goto err;
 		break;
 
@@ -2950,7 +2953,7 @@ static int stv090x_optimize_track(struct stv090x_state *state)
 			}
 		}
 
-		STV090x_WRITE_DEMOD(state, ERRCTRL1, 0x67); /* PER */
+		STV090x_WRITE_DEMOD(state, ERRCTRL1, ERRCTRL1_DVBS2); /* PER */
 		break;
 
 	case STV090x_ERROR:
@@ -3401,10 +3404,10 @@ static enum stv090x_signal_state stv090x_algo(struct stv090x_state *state)
 				if (STV090x_WRITE_DEMOD(state, PDELCTRL2, reg) < 0)
 					goto err;
 
-				if (STV090x_WRITE_DEMOD(state, ERRCTRL1, 0x67) < 0) /* PER */
+				if (STV090x_WRITE_DEMOD(state, ERRCTRL1, ERRCTRL1_DVBS2) < 0) /* PER */
 					goto err;
 			} else {
-				if (STV090x_WRITE_DEMOD(state, ERRCTRL1, 0x75) < 0)
+				if (STV090x_WRITE_DEMOD(state, ERRCTRL1, ERRCTRL1_DVBS1) < 0)
 					goto err;
 			}
 			/* Reset the Total packet counter */
@@ -3517,6 +3520,33 @@ static int stv090x_read_status(struct dvb_frontend *fe, enum fe_status *status)
 	return 0;
 }
 
+static int stv090x_read_ber(struct dvb_frontend *fe, u32 *ber)
+{
+        struct stv090x_state *state = fe->demodulator_priv;
+
+        u32 reg, h, m, l;
+        enum fe_status status;
+
+        stv090x_read_status(fe, &status);
+        if (!(status & FE_HAS_LOCK)) {
+		*ber = 1 << 23; /* Max BER */
+        } else {
+		/* Counter 1 */
+		reg = STV090x_READ_DEMOD(state, ERRCNT12);
+		h = STV090x_GETFIELD_Px(reg, ERR_CNT12_FIELD);
+
+		reg = STV090x_READ_DEMOD(state, ERRCNT11);
+		m = STV090x_GETFIELD_Px(reg, ERR_CNT11_FIELD);
+
+		reg = STV090x_READ_DEMOD(state, ERRCNT10);
+		l = STV090x_GETFIELD_Px(reg, ERR_CNT10_FIELD);
+
+		*ber = ((h << 16) | (m << 8) | l);
+        }
+        return 0;
+}
+
+#if 0
 static int stv090x_read_per(struct dvb_frontend *fe, u32 *per)
 {
 	struct stv090x_state *state = fe->demodulator_priv;
@@ -3567,6 +3597,7 @@ err:
 	dprintk(FE_ERROR, 1, "I/O error");
 	return -1;
 }
+#endif
 
 static int stv090x_table_lookup(const struct stv090x_tab *tab, int max, int val)
 {
@@ -3654,8 +3685,10 @@ static int stv090x_read_cnr(struct dvb_frontend *fe, u16 *cnr)
 	u32 reg_0, reg_1, reg, i;
 	s32 val_0, val_1, val = 0;
 	u8 lock_f;
+#ifndef DBVALS
 	s32 div;
 	u32 last;
+#endif
 
 	switch (state->delsys) {
 	case STV090x_DVBS2:
@@ -3673,23 +3706,20 @@ static int stv090x_read_cnr(struct dvb_frontend *fe, u16 *cnr)
 			}
 			val /= 16;
 #ifdef DBVALS
-			{
-				s16 snr;
-				snr = stv090x_table_lookup(stv090x_s2cn_tab,
-							    ARRAY_SIZE(stv090x_s2cn_tab) - 1, val);
-				if (snr > stv090x_s2cn_tab[0].read)
-					snr = -30;
-				else if (snr < stv090x_s2cn_tab[ARRAY_SIZE(stv090x_s2cn_tab) - 1].read)
-					snr = 500;
-				*cnr = snr;
-			}
+			*cnr = stv090x_table_lookup(stv090x_s2cn_tab,
+						    ARRAY_SIZE(stv090x_s2cn_tab) - 1, val);
 #else
 			last = ARRAY_SIZE(stv090x_s2cn_tab) - 1;
 			div = stv090x_s2cn_tab[0].read -
 			      stv090x_s2cn_tab[last].read;
 			*cnr = 0xFFFF - ((val * 0xFFFF) / div);
 #endif
-		}
+		} else
+#ifdef DBVALS
+			*cnr = -30;
+#else
+	 	        *cnr = 0;
+#endif
 		break;
 
 	case STV090x_DVBS1:
@@ -3708,23 +3738,16 @@ static int stv090x_read_cnr(struct dvb_frontend *fe, u16 *cnr)
 			}
 			val /= 16;
 #ifdef DBVALS
-			{
-				s16 snr;
-				snr = stv090x_table_lookup(stv090x_s1cn_tab,
-							    ARRAY_SIZE(stv090x_s1cn_tab) - 1, val);
-				if (snr > stv090x_s1cn_tab[0].read)
-					snr = 0;
-				else if (snr < stv090x_s2cn_tab[ARRAY_SIZE(stv090x_s1cn_tab) - 1].read)
-					snr = 500;
-				*cnr = snr;
-			}
+			*cnr = stv090x_table_lookup(stv090x_s1cn_tab,
+						    ARRAY_SIZE(stv090x_s1cn_tab) - 1, val);
 #else
 			last = ARRAY_SIZE(stv090x_s1cn_tab) - 1;
 			div = stv090x_s1cn_tab[0].read -
 			      stv090x_s1cn_tab[last].read;
 			*cnr = 0xFFFF - ((val * 0xFFFF) / div);
 #endif
-		}
+		} else
+			*cnr = 0;
 		break;
 	default:
 		break;
@@ -4792,7 +4815,7 @@ static struct dvb_frontend_ops stv090x_ops = {
 
 	.search				= stv090x_search,
 	.read_status			= stv090x_read_status,
-	.read_ber			= stv090x_read_per,
+	.read_ber			= stv090x_read_ber,
 	.read_signal_strength		= stv090x_read_signal_strength,
 	.read_snr			= stv090x_read_cnr,
 	.read_ucblocks			= stv090x_read_ucblocks,
